@@ -437,24 +437,336 @@
 
   function showToast(message, type) {
     var container = document.getElementById('toastContainer');
-    var bgClass = type === 'danger' ? 'bg-danger text-white' : (type === 'warning' ? 'bg-warning text-dark' : 'bg-dark text-white');
-    var icon = type === 'danger' ? 'bi-exclamation-octagon-fill' : (type === 'warning' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill text-success');
+    var variantClass = type === 'danger' ? 'toast-danger' : (type === 'warning' ? 'toast-warning' : 'toast-success');
+    var icon = type === 'danger' ? 'bi-exclamation-octagon-fill' : (type === 'warning' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill');
+    var titleText = type === 'danger' ? 'Peringatan Sistem' : (type === 'warning' ? 'Perhatian' : 'Berhasil');
 
     var wrapper = document.createElement('div');
-    wrapper.className = 'toast align-items-center border-0 show shadow rounded-3 mb-2 ' + bgClass;
+    wrapper.className = 'pmi-toast-card ' + variantClass;
     wrapper.setAttribute('role', 'alert');
     wrapper.innerHTML =
-      '<div class="d-flex">' +
-        '<div class="toast-body d-flex align-items-center gap-2">' +
-          '<i class="bi ' + icon + ' fs-5"></i>' +
-          '<span>' + escapeHtml(message) + '</span>' +
-        '</div>' +
-        '<button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.closest(\'.toast\').remove()"></button>' +
-      '</div>';
+      '<div class="pmi-toast-icon"><i class="bi ' + icon + '"></i></div>' +
+      '<div class="flex-grow-1" style="min-width: 0;">' +
+        '<div class="fw-bolder text-dark" style="font-size: 0.82rem;">' + titleText + '</div>' +
+        '<div class="text-secondary" style="font-size: 0.78rem; line-height: 1.38;">' + escapeHtml(message) + '</div>' +
+      '</div>' +
+      '<button type="button" class="btn-close" style="font-size: 0.65rem;" onclick="this.closest(\'.pmi-toast-card\').remove()"></button>';
     container.appendChild(wrapper);
     setTimeout(function() {
       if (wrapper && wrapper.parentNode) wrapper.remove();
-    }, 4500);
+    }, 4200);
+  }
+
+  /* ==========================================================================
+   * 2C. ENGINE PUSAT NOTIFIKASI INTERAKTIF (EXPIRED, STOK KRITIS & OPNAME)
+   * ========================================================================== */
+  var _NOTIF_ACTIVE_TAB = 'ALL';
+  var _NOTIF_READ_SIGNATURE = localStorage.getItem('PMI_SKA_NOTIF_READ_SIG') || '';
+
+  function toggleNotificationDropdown(e) {
+    if (e) e.stopPropagation();
+    var panel = document.getElementById('notifDropdownPanel');
+    var btn = document.getElementById('notifBellBtn');
+    if (!panel) return;
+    var isOpen = panel.classList.contains('show');
+    if (isOpen) {
+      closeNotificationDropdown();
+    } else {
+      refreshNotificationCenterUI();
+      panel.classList.add('show');
+      if (btn) btn.classList.add('active');
+    }
+  }
+
+  function closeNotificationDropdown() {
+    var panel = document.getElementById('notifDropdownPanel');
+    var btn = document.getElementById('notifBellBtn');
+    if (panel) panel.classList.remove('show');
+    if (btn) btn.classList.remove('active');
+  }
+
+  document.addEventListener('click', function(e) {
+    var wrapper = document.getElementById('notifDropdownWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+      closeNotificationDropdown();
+    }
+  });
+
+  function setNotificationTabFilter(tabName) {
+    _NOTIF_ACTIVE_TAB = tabName || 'ALL';
+    var tabs = document.querySelectorAll('.notif-tab-btn[data-filter]');
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].getAttribute('data-filter') === _NOTIF_ACTIVE_TAB) {
+        tabs[i].classList.add('active');
+      } else {
+        tabs[i].classList.remove('active');
+      }
+    }
+    refreshNotificationCenterUI();
+  }
+
+  function buildWarehouseNotificationsList() {
+    var list = [];
+    var seenExpKeys = {};
+
+    // 1. Notifikasi Barang Kedaluwarsa & Mendekati Kedaluwarsa
+    var expList = APP_STATE.expiredMonitoringList || [];
+    for (var i = 0; i < expList.length; i++) {
+      var ex = expList[i];
+      if (!ex || ex.status_expired === 'AMAN' || ex.status_expired === 'TANPA EXPIRED') continue;
+      var eKey = ex.kode_barang + '::' + ex.expired_date;
+      if (seenExpKeys[eKey]) continue;
+      seenExpKeys[eKey] = true;
+
+      var isExpired = ex.status_expired === 'KEDALUWARSA' || ex.days_remaining <= 0;
+      var isUrgent = ex.status_expired === 'SEGERA KEDALUWARSA';
+      list.push({
+        id: 'EXP-' + eKey,
+        category: 'EXPIRED',
+        priority: isExpired ? 1 : (isUrgent ? 2 : 4),
+        variant: isExpired ? 'danger' : (isUrgent ? 'orange' : 'warning'),
+        icon: isExpired ? 'bi-calendar2-x-fill' : (isUrgent ? 'bi-alarm-fill' : 'bi-hourglass-split'),
+        badgeText: isExpired ? 'KEDALUWARSA' : (isUrgent ? 'SEGERA EXPIRED' : 'PERHATIAN EXPIRED'),
+        code: ex.kode_barang + ' \u2022 ' + ex.kategori,
+        title: ex.nama_barang,
+        desc: (isExpired
+          ? ('Melewati tanggal expired ' + Math.abs(ex.days_remaining) + ' hari (' + ex.expired_date + ')')
+          : ('Sisa ' + ex.days_remaining + ' hari menuju expired (' + ex.expired_date + ')')) +
+          ' \u2022 Stok: ' + formatNumber(ex.saldo_stok_saat_ini) + ' ' + ex.satuan,
+        targetType: 'EXPIRED',
+        targetQuery: ex.kode_barang
+      });
+    }
+
+    // Fallback jika expiredMonitoringList belum terisi tapi masterBarang memiliki nearest_expired_date
+    if (expList.length === 0 && APP_STATE.masterBarang) {
+      for (var m = 0; m < APP_STATE.masterBarang.length; m++) {
+        var mit = APP_STATE.masterBarang[m];
+        if (mit.status_aktif !== 'AKTIF' || !mit.nearest_expired_date) continue;
+        var ev = evaluateClientExpiry(mit.nearest_expired_date);
+        if (!ev.hasExpiry || ev.status === 'AMAN') continue;
+        var isExp2 = ev.status === 'KEDALUWARSA';
+        var isUrg2 = ev.status === 'SEGERA KEDALUWARSA';
+        list.push({
+          id: 'EXP-' + mit.kode_barang,
+          category: 'EXPIRED',
+          priority: isExp2 ? 1 : (isUrg2 ? 2 : 4),
+          variant: isExp2 ? 'danger' : (isUrg2 ? 'orange' : 'warning'),
+          icon: isExp2 ? 'bi-calendar2-x-fill' : 'bi-alarm-fill',
+          badgeText: ev.status,
+          code: mit.kode_barang + ' \u2022 ' + mit.kategori,
+          title: mit.nama_barang,
+          desc: (ev.daysRemaining <= 0
+            ? ('Melewati expired ' + Math.abs(ev.daysRemaining) + ' hari (' + ev.expiredDate + ')')
+            : ('Sisa ' + ev.daysRemaining + ' hari menuju expired (' + ev.expiredDate + ')')) +
+            ' \u2022 Stok: ' + formatNumber(mit.saldo_stok) + ' ' + mit.satuan,
+          targetType: 'EXPIRED',
+          targetQuery: mit.kode_barang
+        });
+      }
+    }
+
+    // 2. Notifikasi Stok Habis & Stok Menipis / Kritis
+    var masters = APP_STATE.masterBarang || [];
+    for (var j = 0; j < masters.length; j++) {
+      var it = masters[j];
+      if (it.status_aktif !== 'AKTIF') continue;
+      var saldo = Number(it.saldo_stok) || 0;
+      var minStok = Number(it.stok_minimum) || 0;
+      if (saldo <= minStok) {
+        var isHabis = saldo <= 0;
+        list.push({
+          id: 'STOK-' + it.kode_barang,
+          category: 'STOK',
+          priority: isHabis ? 1 : 3,
+          variant: isHabis ? 'danger' : 'warning',
+          icon: isHabis ? 'bi-x-octagon-fill' : 'bi-exclamation-triangle-fill',
+          badgeText: isHabis ? 'STOK HABIS (0)' : 'STOK MENIPIS',
+          code: it.kode_barang + ' \u2022 ' + it.kategori,
+          title: it.nama_barang,
+          desc: 'Saldo saat ini: ' + formatNumber(saldo) + ' ' + it.satuan +
+                ' (Minimum: ' + formatNumber(minStok) + ' ' + it.satuan + ') \u2022 Rak: ' + (it.lokasi_rak || '-'),
+          targetType: 'STOK',
+          targetQuery: it.kode_barang
+        });
+      }
+    }
+
+    // 3. Notifikasi Stock Opname Menunggu Persetujuan (PENDING)
+    var opList = APP_STATE.stockOpnameList || [];
+    for (var o = 0; o < opList.length; o++) {
+      var op = opList[o];
+      if (String(op.status_persetujuan).toUpperCase() !== 'PENDING') continue;
+      list.push({
+        id: 'OPN-' + op.id_opname,
+        category: 'OPNAME',
+        priority: 3,
+        variant: 'info',
+        icon: 'bi-clipboard2-check-fill',
+        badgeText: 'MENUNGGU APPROVAL',
+        code: op.no_opname + ' \u2022 ' + op.kode_barang,
+        title: op.nama_barang,
+        desc: 'Stok Sistem: ' + formatNumber(op.stok_sistem) + ' \u2192 Fisik: ' + formatNumber(op.stok_fisik) +
+              ' ' + op.satuan + ' (Selisih: ' + (op.selisih > 0 ? '+' : '') + formatNumber(op.selisih) + ')',
+        targetType: 'OPNAME',
+        targetQuery: op.no_opname
+      });
+    }
+
+    list.sort(function(a, b) {
+      return a.priority - b.priority;
+    });
+
+    return list;
+  }
+
+  function refreshNotificationCenterUI() {
+    var allNotifs = buildWarehouseNotificationsList();
+    var countExp = 0;
+    var countStok = 0;
+    var countOpname = 0;
+    var sigParts = [];
+
+    for (var i = 0; i < allNotifs.length; i++) {
+      var n = allNotifs[i];
+      sigParts.push(n.id);
+      if (n.category === 'EXPIRED') countExp++;
+      else if (n.category === 'STOK') countStok++;
+      else if (n.category === 'OPNAME') countOpname++;
+    }
+
+    var totalCount = allNotifs.length;
+    var currentSignature = sigParts.join('|');
+    var isUnread = totalCount > 0 && currentSignature !== _NOTIF_READ_SIGNATURE;
+
+    // Update badge pada ikon lonceng di topbar
+    var notifDot = document.getElementById('topNotifCount');
+    var bellBtn = document.getElementById('notifBellBtn');
+    if (notifDot) {
+      if (totalCount > 0 && isUnread) {
+        notifDot.textContent = totalCount > 99 ? '99+' : totalCount;
+        notifDot.classList.remove('d-none');
+        if (bellBtn) bellBtn.classList.add('has-unread');
+      } else {
+        notifDot.classList.add('d-none');
+        if (bellBtn) bellBtn.classList.remove('has-unread');
+      }
+    }
+
+    // Update badge di sidebar
+    var expBadge = document.getElementById('sidebarExpiredBadge');
+    if (expBadge) {
+      if (countExp > 0) {
+        expBadge.textContent = countExp;
+        expBadge.classList.remove('d-none');
+      } else {
+        expBadge.classList.add('d-none');
+      }
+    }
+
+    var opnBadge = document.getElementById('sidebarOpnameBadge');
+    if (opnBadge) {
+      if (countOpname > 0) {
+        opnBadge.textContent = countOpname;
+        opnBadge.classList.remove('d-none');
+      } else {
+        opnBadge.classList.add('d-none');
+      }
+    }
+
+    // Update counter pada header & tab dropdown notifikasi
+    var headerBadge = document.getElementById('notifHeaderBadge');
+    var headerSub = document.getElementById('notifHeaderSubtitle');
+    if (headerBadge) headerBadge.textContent = totalCount + ' Peringatan';
+    if (headerSub) {
+      headerSub.textContent = totalCount > 0
+        ? (countExp + ' Expired \u2022 ' + countStok + ' Stok Kritis \u2022 ' + countOpname + ' Opname')
+        : 'Seluruh stok & masa simpan dalam kondisi aman';
+    }
+
+    var elAll = document.getElementById('notifTabCountAll');
+    var elExp = document.getElementById('notifTabCountExp');
+    var elStok = document.getElementById('notifTabCountStok');
+    var elOpn = document.getElementById('notifTabCountOpname');
+    if (elAll) elAll.textContent = totalCount;
+    if (elExp) elExp.textContent = countExp;
+    if (elStok) elStok.textContent = countStok;
+    if (elOpn) elOpn.textContent = countOpname;
+
+    var filtered = allNotifs.filter(function(item) {
+      if (_NOTIF_ACTIVE_TAB === 'ALL') return true;
+      return item.category === _NOTIF_ACTIVE_TAB;
+    });
+
+    var container = document.getElementById('notifListContainer');
+    if (!container) return;
+
+    if (filtered.length === 0) {
+      container.innerHTML =
+        '<div class="notif-empty-state">' +
+          '<div class="notif-empty-icon"><i class="bi bi-shield-check"></i></div>' +
+          '<div class="fw-bolder text-dark small mb-1">Tidak Ada Peringatan pada Kategori Ini</div>' +
+          '<div class="small text-muted">Seluruh barang gudang berada dalam kondisi terkendali.</div>' +
+        '</div>';
+      return;
+    }
+
+    var html = '';
+    for (var k = 0; k < filtered.length; k++) {
+      var it = filtered[k];
+      html +=
+        '<div class="notif-item-row" onclick="handleNotificationItemClick(\'' + escapeHtml(it.targetType) + '\', \'' + escapeHtml(it.targetQuery) + '\')">' +
+          '<div class="notif-item-icon ' + it.variant + '">' +
+            '<i class="bi ' + it.icon + '"></i>' +
+          '</div>' +
+          '<div class="notif-item-content">' +
+            '<div class="notif-item-top">' +
+              '<span class="notif-item-badge ' + it.variant + '">' + escapeHtml(it.badgeText) + '</span>' +
+              '<span class="notif-item-code">' + escapeHtml(it.code) + '</span>' +
+            '</div>' +
+            '<div class="notif-item-title">' + escapeHtml(it.title) + '</div>' +
+            '<div class="notif-item-desc">' + escapeHtml(it.desc) + '</div>' +
+          '</div>' +
+        '</div>';
+    }
+    container.innerHTML = html;
+  }
+
+  function markAllNotificationsRead() {
+    var allNotifs = buildWarehouseNotificationsList();
+    var sigParts = [];
+    for (var i = 0; i < allNotifs.length; i++) {
+      sigParts.push(allNotifs[i].id);
+    }
+    _NOTIF_READ_SIGNATURE = sigParts.join('|');
+    try {
+      localStorage.setItem('PMI_SKA_NOTIF_READ_SIG', _NOTIF_READ_SIGNATURE);
+    } catch (e) {}
+    refreshNotificationCenterUI();
+    showToast('Seluruh notifikasi telah ditandai dibaca.', 'success');
+  }
+
+  function handleNotificationItemClick(targetType, targetQuery) {
+    closeNotificationDropdown();
+    if (targetType === 'EXPIRED') {
+      document.getElementById('filterExpStatus').value = 'SEMUA';
+      document.getElementById('filterExpKategori').value = 'SEMUA';
+      document.getElementById('filterExpSearch').value = targetQuery || '';
+      switchView('expired');
+      loadExpiredMonitoringData(false);
+    } else if (targetType === 'STOK') {
+      document.getElementById('filterMasterKategori').value = 'SEMUA';
+      document.getElementById('filterMasterStatus').value = 'AKTIF';
+      document.getElementById('filterMasterSearch').value = targetQuery || '';
+      switchView('master-barang');
+      renderMasterBarangTable(1);
+    } else if (targetType === 'OPNAME') {
+      document.getElementById('filterOpnameKategori').value = 'SEMUA';
+      document.getElementById('filterOpnameStatus').value = 'PENDING';
+      document.getElementById('filterOpnameSearch').value = targetQuery || '';
+      switchView('stock-opname');
+      renderStockOpnameTable();
+    }
   }
 
   /* ==========================================================================
@@ -484,19 +796,337 @@
     var errBox = document.getElementById('loginErrorBox');
     errBox.classList.add('d-none');
 
-    callServerApi('LOGIN', { username: username, password: password }, { loadingTitle: 'Autentikasi Pengguna...' })
+    callServerApi('LOGIN', { username: username, password: password })
       .then(function(res) {
         APP_STATE.token = res.data.token;
         APP_STATE.user = res.data.user;
         APP_STATE.permissions = res.data.permissions || {};
         localStorage.setItem('PMI_SKA_SESSION_TOKEN', APP_STATE.token);
-        enterAuthenticatedApp();
+        if (res.data.bundle) {
+          applyBundleToState(res.data.bundle);
+          enterAuthenticatedApp(true);
+        } else {
+          enterAuthenticatedApp(false);
+        }
         showToast(res.message || 'Login berhasil!', 'success');
       })
       .catch(function(err) {
         errBox.textContent = err.message || 'Username atau password salah.';
         errBox.classList.remove('d-none');
       });
+  }
+
+  function applyBundleToState(b) {
+    if (!b) return;
+    if (b.user) APP_STATE.user = b.user;
+    if (b.permissions) APP_STATE.permissions = b.permissions;
+    if (b.settings) APP_STATE.settings = Object.assign(APP_STATE.settings, b.settings);
+    if (b.masterData) {
+      APP_STATE.masterBarang = b.masterData.items || [];
+      APP_STATE.donors = b.masterData.donors || [];
+    }
+    if (b.dashboard) {
+      APP_STATE.dashboardData = b.dashboard;
+    }
+    if (b.transaksiMasuk) {
+      APP_STATE.transaksiMasuk = b.transaksiMasuk.transactions || [];
+      APP_STATE.nextAutoNumberIn = b.transaksiMasuk.nextAutoNumber || APP_STATE.nextAutoNumberIn;
+    }
+    if (b.transaksiKeluar) {
+      APP_STATE.transaksiKeluar = b.transaksiKeluar.transactions || [];
+      APP_STATE.nextAutoNumberOut = b.transaksiKeluar.nextAutoNumber || APP_STATE.nextAutoNumberOut;
+    }
+    if (b.stockOpname) {
+      APP_STATE.stockOpnameList = b.stockOpname.records || [];
+      APP_STATE.nextAutoNumberOpname = b.stockOpname.nextAutoNumber || APP_STATE.nextAutoNumberOpname;
+    }
+    if (b.expiredMonitoring) {
+      APP_STATE.expiredMonitoringList = b.expiredMonitoring.items || [];
+      APP_STATE.expiredSummary = b.expiredMonitoring.summary || APP_STATE.expiredSummary;
+    }
+    APP_STATE.bundleLoaded = true;
+    APP_STATE.lastBundleSyncMs = Date.now();
+    saveFastStateCache();
+  }
+
+  /**
+   * MESIN KALKULASI CLIENT-SIDE INSTAN (< 10ms / 0.01 Detik)
+   * Menghitung ulang saldo stok, dashboard, kartu stok, monitoring expired,
+   * dan 12 laporan langsung di browser tanpa harus menunggu round-trip server.
+   */
+  function evaluateClientExpiry(expStr) {
+    if (!expStr || expStr === '-') {
+      return { hasExpiry: false, expiredDate: '', daysRemaining: null, status: 'TANPA EXPIRED' };
+    }
+    var clean = String(expStr).substring(0, 10);
+    var todayStr = new Date().toISOString().substring(0, 10);
+    var tParts = todayStr.split('-');
+    var eParts = clean.split('-');
+    if (eParts.length < 3) return { hasExpiry: false, expiredDate: '', daysRemaining: null, status: 'TANPA EXPIRED' };
+    var tUtc = Date.UTC(parseInt(tParts[0], 10), parseInt(tParts[1], 10) - 1, parseInt(tParts[2], 10));
+    var eUtc = Date.UTC(parseInt(eParts[0], 10), parseInt(eParts[1], 10) - 1, parseInt(eParts[2], 10));
+    var diff = Math.floor((eUtc - tUtc) / 86400000);
+    var st = diff <= 0 ? 'KEDALUWARSA' : (diff <= 30 ? 'SEGERA KEDALUWARSA' : (diff <= 90 ? 'PERHATIAN' : 'AMAN'));
+    return { hasExpiry: true, expiredDate: clean, daysRemaining: diff, status: st };
+  }
+
+  function recomputeAllStateLocally() {
+    var inMap = {};
+    var nearestExpMap = {};
+    for (var i = 0; i < APP_STATE.transaksiMasuk.length; i++) {
+      var m = APP_STATE.transaksiMasuk[i];
+      var idB = String(m.id_barang);
+      var qIn = Number(m.jumlah_masuk) || 0;
+      inMap[idB] = (inMap[idB] || 0) + qIn;
+      var exp = m.expired_date ? String(m.expired_date).substring(0, 10) : '';
+      if (exp && qIn > 0 && (!nearestExpMap[idB] || exp < nearestExpMap[idB])) {
+        nearestExpMap[idB] = exp;
+      }
+    }
+
+    var outMap = {};
+    for (var j = 0; j < APP_STATE.transaksiKeluar.length; j++) {
+      var k = APP_STATE.transaksiKeluar[j];
+      var idOut = String(k.id_barang);
+      outMap[idOut] = (outMap[idOut] || 0) + (Number(k.jumlah_keluar) || 0);
+    }
+
+    var adjMap = {};
+    for (var o = 0; o < APP_STATE.stockOpnameList.length; o++) {
+      var op = APP_STATE.stockOpnameList[o];
+      if (String(op.status_persetujuan).toUpperCase() === 'APPROVED') {
+        var idOp = String(op.id_barang);
+        adjMap[idOp] = (adjMap[idOp] || 0) + (Number(op.selisih) || 0);
+      }
+    }
+
+    for (var idx = 0; idx < APP_STATE.masterBarang.length; idx++) {
+      var it = APP_STATE.masterBarang[idx];
+      var id = String(it.id_barang);
+      var totIn = inMap[id] !== undefined ? inMap[id] : (Number(it.total_masuk) || 0);
+      var totOut = outMap[id] !== undefined ? outMap[id] : (Number(it.total_keluar) || 0);
+      var adj = adjMap[id] !== undefined ? adjMap[id] : (Number(it.penyesuaian_opname) || 0);
+      if (APP_STATE.transaksiMasuk.length > 0 || APP_STATE.transaksiKeluar.length > 0) {
+        totIn = inMap[id] || 0;
+        totOut = outMap[id] || 0;
+        adj = adjMap[id] || 0;
+      }
+      var saldo = totIn - totOut + adj;
+      var harga = Number(it.harga_unit) || 0;
+      var minStok = Number(it.stok_minimum) || 0;
+      it.total_masuk = totIn;
+      it.total_keluar = totOut;
+      it.penyesuaian_opname = adj;
+      it.saldo_stok = saldo;
+      it.total_nilai = saldo * harga;
+      it.status_stok = saldo <= 0 ? 'HABIS' : (saldo <= minStok ? 'MENIPIS' : 'TERSEDIA');
+      var nExp = (saldo > 0 && nearestExpMap[id]) ? nearestExpMap[id] : (it.nearest_expired_date || '');
+      var ev = evaluateClientExpiry(nExp);
+      it.nearest_expired_date = ev.expiredDate;
+      it.days_to_expiry = ev.daysRemaining;
+      it.status_expired = ev.status;
+    }
+
+    // Recompute Expired Monitoring List
+    var itemLookup = {};
+    for (var a = 0; a < APP_STATE.masterBarang.length; a++) {
+      itemLookup[APP_STATE.masterBarang[a].id_barang] = APP_STATE.masterBarang[a];
+    }
+    var expRecords = [];
+    var seenBatch = {};
+    for (var tm = 0; tm < APP_STATE.transaksiMasuk.length; tm++) {
+      var tx = APP_STATE.transaksiMasuk[tm];
+      if (!tx.expired_date) continue;
+      var mItem = itemLookup[tx.id_barang];
+      if (!mItem || mItem.status_aktif !== 'AKTIF') continue;
+      var evExp = evaluateClientExpiry(tx.expired_date);
+      if (!evExp.hasExpiry) continue;
+      var bKey = tx.id_barang + '::' + evExp.expiredDate + '::' + (tx.no_grn || tx.no_transaksi);
+      if (seenBatch[bKey]) continue;
+      seenBatch[bKey] = true;
+      expRecords.push({
+        id_masuk: tx.id_masuk,
+        id_barang: mItem.id_barang,
+        kode_barang: mItem.kode_barang,
+        nama_barang: mItem.nama_barang,
+        kategori: mItem.kategori,
+        satuan: mItem.satuan,
+        harga_unit: mItem.harga_unit,
+        sumber_donor: tx.sumber_donor || mItem.sumber_donor || '-',
+        no_batch_dokumen: (tx.no_grn && tx.no_grn !== '-') ? tx.no_grn : tx.no_transaksi,
+        tanggal_masuk: tx.tanggal,
+        jumlah_batch_masuk: tx.jumlah_masuk,
+        saldo_stok_saat_ini: mItem.saldo_stok,
+        total_nilai_stok: mItem.total_nilai,
+        lokasi_rak: mItem.lokasi_rak || '-',
+        expired_date: evExp.expiredDate,
+        days_remaining: evExp.daysRemaining,
+        status_expired: evExp.status,
+        catatan: tx.catatan || ''
+      });
+    }
+    expRecords.sort(function(x, y) { return x.days_remaining - y.days_remaining; });
+    var expSum = { totalItemBerexpired: expRecords.length, kedaluwarsa: 0, segeraKedaluwarsa: 0, perhatian: 0, aman: 0 };
+    for (var eIdx = 0; eIdx < expRecords.length; eIdx++) {
+      var stE = expRecords[eIdx].status_expired;
+      if (stE === 'KEDALUWARSA') expSum.kedaluwarsa++;
+      else if (stE === 'SEGERA KEDALUWARSA') expSum.segeraKedaluwarsa++;
+      else if (stE === 'PERHATIAN') expSum.perhatian++;
+      else if (stE === 'AMAN') expSum.aman++;
+    }
+    if (expRecords.length > 0 || APP_STATE.transaksiMasuk.length > 0) {
+      APP_STATE.expiredMonitoringList = expRecords;
+      APP_STATE.expiredSummary = expSum;
+    }
+
+    APP_STATE.dashboardData = computeDashboardLocally();
+    saveFastStateCache();
+    renderAllCachedViewsInstantly();
+  }
+
+  function computeDashboardLocally() {
+    var startDate = document.getElementById('dashStartDate') ? document.getElementById('dashStartDate').value : '';
+    var endDate = document.getElementById('dashEndDate') ? document.getElementById('dashEndDate').value : '';
+    var selectedYear = document.getElementById('dashYearSelect') ? document.getElementById('dashYearSelect').value : String(new Date().getFullYear());
+
+    var totalJenis = 0, totalStok = 0, totalNilai = 0, stokMenipis = 0;
+    var catMap = { 'FOOD ITEMS': 0, 'NON FOOD': 1, 'OBAT': 2 };
+    var stokByCat = [0, 0, 0], nilaiByCat = [0, 0, 0], distByCat = [0, 0, 0];
+    var criticalList = [];
+
+    for (var i = 0; i < APP_STATE.masterBarang.length; i++) {
+      var it = APP_STATE.masterBarang[i];
+      if (it.status_aktif !== 'AKTIF') continue;
+      totalJenis++;
+      var s = Number(it.saldo_stok) || 0;
+      var v = Number(it.total_nilai) || 0;
+      var m = Number(it.stok_minimum) || 0;
+      totalStok += s;
+      totalNilai += v;
+      var cIdx = catMap[it.kategori];
+      if (cIdx !== undefined) {
+        stokByCat[cIdx] += s;
+        nilaiByCat[cIdx] += v;
+      }
+      if (s <= m) {
+        stokMenipis++;
+        criticalList.push(it);
+      }
+    }
+
+    var monthlyIn = [0,0,0,0,0,0,0,0,0,0,0,0];
+    var monthlyOut = [0,0,0,0,0,0,0,0,0,0,0,0];
+    var trxInCount = 0, unitInSum = 0, trxOutCount = 0, unitOutSum = 0;
+    var recent = [];
+
+    for (var mi = 0; mi < APP_STATE.transaksiMasuk.length; mi++) {
+      var txIn = APP_STATE.transaksiMasuk[mi];
+      var tglIn = String(txIn.tanggal || '').substring(0, 10);
+      var qIn = Number(txIn.jumlah_masuk) || 0;
+      if (tglIn.substring(0, 4) === selectedYear) {
+        var mInIdx = parseInt(tglIn.substring(5, 7), 10) - 1;
+        if (mInIdx >= 0 && mInIdx < 12) monthlyIn[mInIdx] += qIn;
+      }
+      if ((!startDate || tglIn >= startDate) && (!endDate || tglIn <= endDate)) {
+        trxInCount++;
+        unitInSum += qIn;
+        recent.push({
+          no_transaksi: txIn.no_transaksi,
+          dokumen_ref: (txIn.no_grn && txIn.no_grn !== '-') ? txIn.no_grn : 'GRN',
+          tanggal: tglIn,
+          nama_barang: txIn.nama_barang,
+          kode_barang: txIn.kode_barang,
+          kategori: txIn.kategori,
+          jenis: 'BARANG MASUK',
+          jumlah: qIn,
+          satuan: txIn.satuan,
+          mitra_tujuan: txIn.sumber_donor || '-'
+        });
+      }
+    }
+
+    for (var ko = 0; ko < APP_STATE.transaksiKeluar.length; ko++) {
+      var txOut = APP_STATE.transaksiKeluar[ko];
+      var tglOut = String(txOut.tanggal || '').substring(0, 10);
+      var qOut = Number(txOut.jumlah_keluar) || 0;
+      if (tglOut.substring(0, 4) === selectedYear) {
+        var mOutIdx = parseInt(tglOut.substring(5, 7), 10) - 1;
+        if (mOutIdx >= 0 && mOutIdx < 12) monthlyOut[mOutIdx] += qOut;
+      }
+      if ((!startDate || tglOut >= startDate) && (!endDate || tglOut <= endDate)) {
+        trxOutCount++;
+        unitOutSum += qOut;
+        var cOutIdx = catMap[txOut.kategori];
+        if (cOutIdx !== undefined) distByCat[cOutIdx] += qOut;
+        recent.push({
+          no_transaksi: txOut.no_transaksi,
+          dokumen_ref: (txOut.no_gdn && txOut.no_gdn !== '-') ? txOut.no_gdn : 'GDN',
+          tanggal: tglOut,
+          nama_barang: txOut.nama_barang,
+          kode_barang: txOut.kode_barang,
+          kategori: txOut.kategori,
+          jenis: 'BARANG KELUAR',
+          jumlah: qOut,
+          satuan: txOut.satuan,
+          mitra_tujuan: txOut.tujuan_distribusi || '-'
+        });
+      }
+    }
+
+    recent.sort(function(a, b) { return String(b.tanggal).localeCompare(String(a.tanggal)); });
+
+    var nearExpiry = [];
+    for (var ex = 0; ex < APP_STATE.expiredMonitoringList.length; ex++) {
+      var eItem = APP_STATE.expiredMonitoringList[ex];
+      if (eItem.status_expired !== 'AMAN') {
+        nearExpiry.push({
+          kode_barang: eItem.kode_barang,
+          nama_barang: eItem.nama_barang,
+          kategori: eItem.kategori,
+          expired_date: eItem.expired_date,
+          days_remaining: eItem.days_remaining,
+          saldo_stok: eItem.saldo_stok_saat_ini,
+          satuan: eItem.satuan,
+          status_expired: eItem.status_expired
+        });
+      }
+    }
+
+    var pendingOp = 0;
+    for (var po = 0; po < APP_STATE.stockOpnameList.length; po++) {
+      if (APP_STATE.stockOpnameList[po].status_persetujuan === 'PENDING') pendingOp++;
+    }
+
+    return {
+      stats: {
+        totalJenisBarang: totalJenis,
+        totalStokKeseluruhan: totalStok,
+        totalNilaiPersediaan: totalNilai,
+        jumlahStokMenipis: stokMenipis,
+        jumlahTransaksiMasuk: trxInCount,
+        totalUnitMasukPeriode: unitInSum,
+        jumlahTransaksiKeluar: trxOutCount,
+        totalUnitKeluarPeriode: unitOutSum,
+        jumlahMendekatiKedaluwarsa: (APP_STATE.expiredSummary.segeraKedaluwarsa || 0) + (APP_STATE.expiredSummary.perhatian || 0),
+        jumlahBarangKedaluwarsa: APP_STATE.expiredSummary.kedaluwarsa || 0,
+        pendingOpnameCount: pendingOp
+      },
+      charts: {
+        categories: ['FOOD ITEMS', 'NON FOOD', 'OBAT'],
+        stokByCategory: stokByCat,
+        nilaiByCategory: nilaiByCat,
+        distribusiByCategory: distByCat,
+        monthly: {
+          year: selectedYear,
+          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+          masukQty: monthlyIn,
+          keluarQty: monthlyOut
+        }
+      },
+      recentActivities: recent.slice(0, 10),
+      criticalStockList: criticalList.slice(0, 8),
+      nearExpiryList: nearExpiry.slice(0, 8)
+    };
   }
 
   function verifyExistingSession() {
@@ -549,6 +1179,7 @@
     if (APP_STATE.expiredMonitoringList) {
       applyExpiredDataToDOM(APP_STATE.expiredSummary, APP_STATE.expiredMonitoringList);
     }
+    refreshNotificationCenterUI();
   }
 
   /**
@@ -562,36 +1193,7 @@
     return callServerApi('GET_INITIAL_BUNDLE', { startDate: startDate, endDate: endDate, year: year }, { silent: true })
       .then(function(res) {
         var b = res.data || {};
-        if (b.user) APP_STATE.user = b.user;
-        if (b.permissions) APP_STATE.permissions = b.permissions;
-        if (b.settings) APP_STATE.settings = Object.assign(APP_STATE.settings, b.settings);
-
-        if (b.masterData) {
-          APP_STATE.masterBarang = b.masterData.items || [];
-          APP_STATE.donors = b.masterData.donors || [];
-        }
-        if (b.dashboard) {
-          APP_STATE.dashboardData = b.dashboard;
-        }
-        if (b.transaksiMasuk) {
-          APP_STATE.transaksiMasuk = b.transaksiMasuk.transactions || [];
-          APP_STATE.nextAutoNumberIn = b.transaksiMasuk.nextAutoNumber || APP_STATE.nextAutoNumberIn;
-        }
-        if (b.transaksiKeluar) {
-          APP_STATE.transaksiKeluar = b.transaksiKeluar.transactions || [];
-          APP_STATE.nextAutoNumberOut = b.transaksiKeluar.nextAutoNumber || APP_STATE.nextAutoNumberOut;
-        }
-        if (b.stockOpname) {
-          APP_STATE.stockOpnameList = b.stockOpname.records || [];
-          APP_STATE.nextAutoNumberOpname = b.stockOpname.nextAutoNumber || APP_STATE.nextAutoNumberOpname;
-        }
-        if (b.expiredMonitoring) {
-          APP_STATE.expiredMonitoringList = b.expiredMonitoring.items || [];
-          APP_STATE.expiredSummary = b.expiredMonitoring.summary || APP_STATE.expiredSummary;
-        }
-
-        APP_STATE.bundleLoaded = true;
-        saveFastStateCache();
+        applyBundleToState(b);
 
         document.getElementById('authScreen').classList.add('d-none');
         document.getElementById('appShell').classList.remove('d-none');
@@ -689,19 +1291,22 @@
     // Tutup sidebar mobile jika sedang terbuka
     document.getElementById('appSidebar').classList.remove('mobile-open');
 
-    // Tampilkan data secara instan dari memori dan sinkronkan secara silent di background
+    // Tampilkan data secara instan (< 10ms) dari memori tanpa jeda server
+    var needsBackgroundSync = !APP_STATE.lastBundleSyncMs || (Date.now() - APP_STATE.lastBundleSyncMs > 20000);
+
     if (viewName === 'dashboard') {
-      if (APP_STATE.dashboardData) applyDashboardDataToDOM(APP_STATE.dashboardData);
-      loadDashboardData(true);
+      APP_STATE.dashboardData = computeDashboardLocally();
+      applyDashboardDataToDOM(APP_STATE.dashboardData);
+      if (needsBackgroundSync) loadDashboardData(true);
     } else if (viewName === 'master-barang') {
-      if (APP_STATE.masterBarang.length > 0) renderMasterBarangTable();
-      loadMasterBarangData(true);
+      renderMasterBarangTable();
+      if (needsBackgroundSync) loadMasterBarangData(true);
     } else if (viewName === 'transaksi-masuk') {
-      if (APP_STATE.transaksiMasuk.length > 0) renderTransaksiMasukTable();
-      loadTransaksiMasukData(true);
+      renderTransaksiMasukTable();
+      if (needsBackgroundSync) loadTransaksiMasukData(true);
     } else if (viewName === 'transaksi-keluar') {
-      if (APP_STATE.transaksiKeluar.length > 0) renderTransaksiKeluarTable();
-      loadTransaksiKeluarData(true);
+      renderTransaksiKeluarTable();
+      if (needsBackgroundSync) loadTransaksiKeluarData(true);
     } else if (viewName === 'kartu-stok') {
       populateKartuStokDropdown();
       if (document.getElementById('stockCardItemSelect').value) {
@@ -709,11 +1314,8 @@
       }
     } else if (viewName === 'stock-opname') {
       renderStockOpnameTable();
-      loadStockOpnameData(true);
+      if (needsBackgroundSync) loadStockOpnameData(true);
     } else if (viewName === 'expired') {
-      if (APP_STATE.expiredMonitoringList.length > 0) {
-        applyExpiredDataToDOM(APP_STATE.expiredSummary, APP_STATE.expiredMonitoringList);
-      }
       loadExpiredMonitoringData(true);
     } else if (viewName === 'laporan') {
       generateSelectedReport();
@@ -736,17 +1338,25 @@
   }
 
   /* ==========================================================================
-   * 5. DASHBOARD UTAMA & 4 GRAFIK INTERAKTIF (BAB 3)
+   * 5. DASHBOARD UTAMA & 4 GRAFIK INTERAKTIF (BAB 3 - INSTANT <10ms)
    * ========================================================================== */
-  function loadDashboardData() {
+  function loadDashboardData(isAutoBackground) {
     var startDate = document.getElementById('dashStartDate').value;
     var endDate = document.getElementById('dashEndDate').value;
     var year = document.getElementById('dashYearSelect').value;
     document.getElementById('chartYearBadge').textContent = 'Tahun ' + year;
 
+    // 1. Hitung dan render instan (< 5ms) dari state lokal
+    if (APP_STATE.masterBarang.length > 0) {
+      APP_STATE.dashboardData = computeDashboardLocally();
+      applyDashboardDataToDOM(APP_STATE.dashboardData);
+    }
+
+    // 2. Sinkronkan di background
     callServerApi('GET_DASHBOARD', { startDate: startDate, endDate: endDate, year: year }, { silent: true })
       .then(function(res) {
         APP_STATE.dashboardData = res.data;
+        APP_STATE.lastBundleSyncMs = Date.now();
         saveFastStateCache();
         applyDashboardDataToDOM(res.data);
       });
@@ -767,32 +1377,8 @@
     document.getElementById('kpiMendekatiExpired').textContent = formatNumber(st.jumlahMendekatiKedaluwarsa);
     document.getElementById('kpiSudahExpired').textContent = formatNumber(st.jumlahBarangKedaluwarsa);
 
-    // Update badge notifikasi di sidebar dan topbar
-    var totalAlert = (st.jumlahStokMenipis || 0) + (st.jumlahBarangKedaluwarsa || 0) + (st.jumlahMendekatiKedaluwarsa || 0);
-    var notifDot = document.getElementById('topNotifCount');
-    if (totalAlert > 0) {
-      notifDot.textContent = totalAlert;
-      notifDot.classList.remove('d-none');
-    } else {
-      notifDot.classList.add('d-none');
-    }
-
-    var expBadge = document.getElementById('sidebarExpiredBadge');
-    var expCount = (st.jumlahBarangKedaluwarsa || 0) + (st.jumlahMendekatiKedaluwarsa || 0);
-    if (expCount > 0) {
-      expBadge.textContent = expCount;
-      expBadge.classList.remove('d-none');
-    } else {
-      expBadge.classList.add('d-none');
-    }
-
-    var opnBadge = document.getElementById('sidebarOpnameBadge');
-    if (st.pendingOpnameCount > 0) {
-      opnBadge.textContent = st.pendingOpnameCount;
-      opnBadge.classList.remove('d-none');
-    } else {
-      opnBadge.classList.add('d-none');
-    }
+    // Update Pusat Notifikasi Interaktif di topbar & badge sidebar
+    refreshNotificationCenterUI();
 
     renderDashboardCharts(d.charts);
     renderDashboardLists(d.recentActivities, d.criticalStockList, d.nearExpiryList);
@@ -994,10 +1580,17 @@
    * 6. MASTER DATA BARANG & DONOR (BAB 4)
    * ========================================================================== */
   function loadMasterBarangData(silent) {
+    // Render langsung (< 5ms) dari state lokal
+    if (APP_STATE.masterBarang.length > 0) {
+      populateDonorDatalist();
+      populateKartuStokDropdown();
+      renderMasterBarangTable(APP_STATE.pagination.masterPage || 1);
+    }
     callServerApi('GET_MASTER_BARANG', {}, { silent: true })
       .then(function(res) {
         APP_STATE.masterBarang = res.data.items || [];
         APP_STATE.donors = res.data.donors || [];
+        APP_STATE.lastBundleSyncMs = Date.now();
         saveFastStateCache();
         populateDonorDatalist();
         populateKartuStokDropdown();
@@ -1141,22 +1734,96 @@
       subkategori: document.getElementById('mbSubkategori').value.trim(),
       nama_barang: document.getElementById('mbNamaBarang').value.trim(),
       satuan: document.getElementById('mbSatuan').value.trim(),
-      harga_unit: document.getElementById('mbHargaUnit').value,
-      sumber_donor: document.getElementById('mbSumberDonor').value.trim(),
-      stok_minimum: document.getElementById('mbStokMinimum').value,
-      lokasi_rak: document.getElementById('mbLokasiRak').value.trim(),
+      harga_unit: parseFloat(document.getElementById('mbHargaUnit').value) || 0,
+      sumber_donor: document.getElementById('mbSumberDonor').value.trim() || '-',
+      stok_minimum: parseFloat(document.getElementById('mbStokMinimum').value) || 0,
+      lokasi_rak: document.getElementById('mbLokasiRak').value.trim() || '-',
       has_expiry: document.getElementById('mbHasExpiry').value,
       status_aktif: document.getElementById('mbStatusAktif').value,
-      stok_awal: document.getElementById('mbStokAwal').value,
+      stok_awal: parseFloat(document.getElementById('mbStokAwal').value) || 0,
       expired_date: document.getElementById('mbExpiredAwal').value,
       keterangan: document.getElementById('mbKeterangan').value.trim()
     };
 
-    callServerApi('SAVE_MASTER_BARANG', payload, { loadingTitle: 'Menyimpan Master Barang...' })
-      .then(function(res) {
-        bootstrap.Modal.getInstance(document.getElementById('modalMasterBarang')).hide();
-        showToast(res.message, 'success');
-        loadMasterBarangData();
+    // Optimistic UI Update (< 15ms): Tutup modal dan perbarui tabel seketika
+    bootstrap.Modal.getInstance(document.getElementById('modalMasterBarang')).hide();
+
+    if (payload.id_barang) {
+      var existing = APP_STATE.masterBarang.find(function(x) { return x.id_barang === payload.id_barang; });
+      if (existing) {
+        Object.assign(existing, {
+          kategori: payload.kategori,
+          kode_barang: payload.kode_barang || existing.kode_barang,
+          subkategori: payload.subkategori || '-',
+          nama_barang: payload.nama_barang,
+          satuan: payload.satuan,
+          harga_unit: payload.harga_unit,
+          sumber_donor: payload.sumber_donor,
+          stok_minimum: payload.stok_minimum,
+          lokasi_rak: payload.lokasi_rak,
+          has_expiry: payload.has_expiry,
+          status_aktif: payload.status_aktif,
+          keterangan: payload.keterangan
+        });
+      }
+      recomputeAllStateLocally();
+      showToast('Data barang [' + (payload.kode_barang || '') + '] ' + payload.nama_barang + ' berhasil diperbarui.', 'success');
+    } else {
+      var tempId = 'BRG-TEMP-' + Date.now();
+      var autoPref = payload.kategori === 'FOOD ITEMS' ? 'FD' : (payload.kategori === 'OBAT' ? 'OB' : 'NF');
+      var tempKode = payload.kode_barang || (autoPref + '-' + ('0000' + (APP_STATE.masterBarang.length + 1)).slice(-4));
+      APP_STATE.masterBarang.unshift({
+        id_barang: tempId,
+        kode_barang: tempKode,
+        nama_barang: payload.nama_barang,
+        kategori: payload.kategori,
+        subkategori: payload.subkategori || '-',
+        satuan: payload.satuan,
+        harga_unit: payload.harga_unit,
+        sumber_donor: payload.sumber_donor,
+        stok_minimum: payload.stok_minimum,
+        lokasi_rak: payload.lokasi_rak,
+        has_expiry: payload.has_expiry,
+        status_aktif: payload.status_aktif,
+        keterangan: payload.keterangan,
+        total_masuk: payload.stok_awal,
+        total_keluar: 0,
+        penyesuaian_opname: 0,
+        saldo_stok: payload.stok_awal,
+        total_nilai: payload.stok_awal * payload.harga_unit,
+        nearest_expired_date: payload.expired_date || '',
+        status_stok: payload.stok_awal <= 0 ? 'HABIS' : (payload.stok_awal <= payload.stok_minimum ? 'MENIPIS' : 'TERSEDIA')
+      });
+      if (payload.stok_awal > 0) {
+        APP_STATE.transaksiMasuk.unshift({
+          id_masuk: 'IN-TEMP-' + Date.now(),
+          no_transaksi: APP_STATE.nextAutoNumberIn,
+          tanggal: new Date().toISOString().substring(0, 10),
+          id_barang: tempId,
+          kode_barang: tempKode,
+          nama_barang: payload.nama_barang,
+          kategori: payload.kategori,
+          jumlah_masuk: payload.stok_awal,
+          satuan: payload.satuan,
+          harga_unit: payload.harga_unit,
+          total_nilai: payload.stok_awal * payload.harga_unit,
+          sumber_donor: payload.sumber_donor,
+          no_grn: 'GRN/INIT/' + tempKode,
+          no_request: '-',
+          expired_date: payload.expired_date || '',
+          catatan: 'Saldo Stok Awal Master Barang'
+        });
+      }
+      recomputeAllStateLocally();
+      showToast('Data barang [' + tempKode + '] ' + payload.nama_barang + ' berhasil ditambahkan.', 'success');
+    }
+
+    callServerApi('SAVE_MASTER_BARANG', payload, { silent: true })
+      .then(function() {
+        syncInitialBundleSilently();
+      })
+      .catch(function() {
+        syncInitialBundleSilently();
       });
   }
 
@@ -1182,11 +1849,17 @@
       confirmIcon: 'bi-trash3'
     }).then(function(confirmed) {
       if (!confirmed) return;
-      callServerApi('DELETE_MASTER_BARANG', { id_barang: idBarang })
-        .then(function(res) {
-          showToast(res.message, 'success');
-          loadMasterBarangData(true);
-          loadDashboardData(true);
+      // Optimistic Delete (< 10ms)
+      APP_STATE.masterBarang = APP_STATE.masterBarang.filter(function(x) { return x.id_barang !== idBarang; });
+      recomputeAllStateLocally();
+      showToast('Barang [' + item.kode_barang + '] ' + item.nama_barang + ' telah dihapus.', 'success');
+
+      callServerApi('DELETE_MASTER_BARANG', { id_barang: idBarang }, { silent: true })
+        .then(function() {
+          syncInitialBundleSilently();
+        })
+        .catch(function() {
+          syncInitialBundleSilently();
         });
     });
   }
@@ -1224,10 +1897,14 @@
   function loadTransaksiMasukData() {
     var startDate = document.getElementById('filterInStartDate').value;
     var endDate = document.getElementById('filterInEndDate').value;
+    // Render langsung (< 5ms) dari state lokal
+    renderTransaksiMasukTable(APP_STATE.pagination.inPage || 1);
+
     callServerApi('GET_TRANSAKSI_MASUK', { startDate: startDate, endDate: endDate }, { silent: true })
       .then(function(res) {
         APP_STATE.transaksiMasuk = res.data.transactions || [];
         APP_STATE.nextAutoNumberIn = res.data.nextAutoNumber || 'BM-AUTO';
+        APP_STATE.lastBundleSyncMs = Date.now();
         saveFastStateCache();
         renderTransaksiMasukTable(APP_STATE.pagination.inPage || 1);
       });
@@ -1248,6 +1925,10 @@
 
     var filtered = APP_STATE.transaksiMasuk.filter(function(r) {
       if (kat !== 'SEMUA' && r.kategori !== kat) return false;
+      var sDate = document.getElementById('filterInStartDate').value;
+      var eDate = document.getElementById('filterInEndDate').value;
+      if (sDate && r.tanggal < sDate) return false;
+      if (eDate && r.tanggal > eDate) return false;
       if (q) {
         var hay = (r.no_transaksi + ' ' + r.kode_barang + ' ' + r.nama_barang + ' ' + r.no_grn + ' ' + r.sumber_donor + ' ' + r.catatan).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
@@ -1383,18 +2064,69 @@
   function handleSaveTransaksiMasuk(e) {
     e.preventDefault();
     var fileInput = document.getElementById('inDokumenFile');
+    var qtyIn = parseFloat(document.getElementById('inJumlahMasuk').value) || 0;
+    var hrgIn = parseFloat(document.getElementById('inHargaUnit').value) || 0;
     var payload = {
       id_masuk: document.getElementById('inIdMasuk').value,
       tanggal: document.getElementById('inTanggal').value,
       id_barang: document.getElementById('inIdBarang').value,
-      jumlah_masuk: document.getElementById('inJumlahMasuk').value,
-      harga_unit: document.getElementById('inHargaUnit').value,
+      jumlah_masuk: qtyIn,
+      harga_unit: hrgIn,
       sumber_donor: document.getElementById('inSumberDonor').value.trim(),
-      no_grn: document.getElementById('inNoGrn').value.trim(),
-      no_request: document.getElementById('inNoRequest').value.trim(),
+      no_grn: document.getElementById('inNoGrn').value.trim() || '-',
+      no_request: document.getElementById('inNoRequest').value.trim() || '-',
       expired_date: document.getElementById('inExpiredDate').value,
       catatan: document.getElementById('inCatatan').value.trim()
     };
+
+    var item = APP_STATE.masterBarang.find(function(x) { return x.id_barang === payload.id_barang; });
+    bootstrap.Modal.getInstance(document.getElementById('modalTransaksiMasuk')).hide();
+
+    // Optimistic UI Update (< 15ms)
+    if (item) {
+      if (payload.id_masuk) {
+        var oldTx = APP_STATE.transaksiMasuk.find(function(x) { return x.id_masuk === payload.id_masuk; });
+        if (oldTx) {
+          Object.assign(oldTx, {
+            tanggal: payload.tanggal,
+            id_barang: item.id_barang,
+            kode_barang: item.kode_barang,
+            nama_barang: item.nama_barang,
+            kategori: item.kategori,
+            jumlah_masuk: qtyIn,
+            satuan: item.satuan,
+            harga_unit: hrgIn,
+            total_nilai: qtyIn * hrgIn,
+            sumber_donor: payload.sumber_donor,
+            no_grn: payload.no_grn,
+            no_request: payload.no_request,
+            expired_date: payload.expired_date,
+            catatan: payload.catatan
+          });
+        }
+      } else {
+        APP_STATE.transaksiMasuk.unshift({
+          id_masuk: 'IN-TEMP-' + Date.now(),
+          no_transaksi: APP_STATE.nextAutoNumberIn,
+          tanggal: payload.tanggal,
+          id_barang: item.id_barang,
+          kode_barang: item.kode_barang,
+          nama_barang: item.nama_barang,
+          kategori: item.kategori,
+          jumlah_masuk: qtyIn,
+          satuan: item.satuan,
+          harga_unit: hrgIn,
+          total_nilai: qtyIn * hrgIn,
+          sumber_donor: payload.sumber_donor,
+          no_grn: payload.no_grn,
+          no_request: payload.no_request,
+          expired_date: payload.expired_date,
+          catatan: payload.catatan
+        });
+      }
+      recomputeAllStateLocally();
+      showToast('Transaksi Barang Masuk berhasil disimpan (+' + formatNumber(qtyIn) + ' ' + item.satuan + ').', 'success');
+    }
 
     readFileAsBase64(fileInput).then(function(fileObj) {
       if (fileObj) {
@@ -1402,12 +2134,11 @@
         payload.dokumen_name = fileObj.name;
         payload.dokumen_mime = fileObj.mime;
       }
-      return callServerApi('SAVE_TRANSAKSI_MASUK', payload, { loadingTitle: 'Menyimpan Transaksi Barang Masuk...' });
-    }).then(function(res) {
-      bootstrap.Modal.getInstance(document.getElementById('modalTransaksiMasuk')).hide();
-      showToast(res.message, 'success');
-      loadMasterBarangData(true);
-      loadTransaksiMasukData();
+      return callServerApi('SAVE_TRANSAKSI_MASUK', payload, { silent: true });
+    }).then(function() {
+      syncInitialBundleSilently();
+    }).catch(function() {
+      syncInitialBundleSilently();
     });
   }
 
@@ -1431,12 +2162,17 @@
       confirmIcon: 'bi-trash3'
     }).then(function(alasan) {
       if (alasan === null) return;
-      callServerApi('DELETE_TRANSAKSI_MASUK', { id_masuk: idMasuk, alasan: alasan })
-        .then(function(res) {
-          showToast(res.message, 'success');
-          loadMasterBarangData(true);
-          loadTransaksiMasukData();
-          loadDashboardData(true);
+      // Optimistic Delete (< 10ms)
+      APP_STATE.transaksiMasuk = APP_STATE.transaksiMasuk.filter(function(x) { return x.id_masuk !== idMasuk; });
+      recomputeAllStateLocally();
+      showToast('Transaksi Barang Masuk ' + tx.no_transaksi + ' telah dihapus.', 'success');
+
+      callServerApi('DELETE_TRANSAKSI_MASUK', { id_masuk: idMasuk, alasan: alasan }, { silent: true })
+        .then(function() {
+          syncInitialBundleSilently();
+        })
+        .catch(function() {
+          syncInitialBundleSilently();
         });
     });
   }
@@ -1447,10 +2183,14 @@
   function loadTransaksiKeluarData() {
     var startDate = document.getElementById('filterOutStartDate').value;
     var endDate = document.getElementById('filterOutEndDate').value;
+    // Render langsung (< 5ms) dari state lokal
+    renderTransaksiKeluarTable(APP_STATE.pagination.outPage || 1);
+
     callServerApi('GET_TRANSAKSI_KELUAR', { startDate: startDate, endDate: endDate }, { silent: true })
       .then(function(res) {
         APP_STATE.transaksiKeluar = res.data.transactions || [];
         APP_STATE.nextAutoNumberOut = res.data.nextAutoNumber || 'BK-AUTO';
+        APP_STATE.lastBundleSyncMs = Date.now();
         saveFastStateCache();
         renderTransaksiKeluarTable(APP_STATE.pagination.outPage || 1);
       });
@@ -1471,6 +2211,10 @@
 
     var filtered = APP_STATE.transaksiKeluar.filter(function(r) {
       if (kat !== 'SEMUA' && r.kategori !== kat) return false;
+      var sDate = document.getElementById('filterOutStartDate').value;
+      var eDate = document.getElementById('filterOutEndDate').value;
+      if (sDate && r.tanggal < sDate) return false;
+      if (eDate && r.tanggal > eDate) return false;
       if (q) {
         var hay = (r.no_transaksi + ' ' + r.kode_barang + ' ' + r.nama_barang + ' ' + r.tujuan_distribusi + ' ' + r.nama_penerima + ' ' + r.no_gdn).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
@@ -1620,11 +2364,63 @@
       jumlah_keluar: qty,
       tujuan_distribusi: document.getElementById('outTujuanDistribusi').value.trim(),
       nama_penerima: document.getElementById('outNamaPenerima').value.trim(),
-      no_gdn: document.getElementById('outNoGdn').value.trim(),
-      no_request: document.getElementById('outNoRequest').value.trim(),
+      no_gdn: document.getElementById('outNoGdn').value.trim() || '-',
+      no_request: document.getElementById('outNoRequest').value.trim() || '-',
       penanggung_jawab: document.getElementById('outPenanggungJawab').value.trim(),
       catatan: document.getElementById('outCatatan').value.trim()
     };
+
+    var item = APP_STATE.masterBarang.find(function(x) { return x.id_barang === payload.id_barang; });
+    bootstrap.Modal.getInstance(document.getElementById('modalTransaksiKeluar')).hide();
+
+    // Optimistic UI Update (< 15ms)
+    if (item) {
+      var hrgOut = Number(item.harga_unit) || 0;
+      if (payload.id_keluar) {
+        var oldOut = APP_STATE.transaksiKeluar.find(function(x) { return x.id_keluar === payload.id_keluar; });
+        if (oldOut) {
+          Object.assign(oldOut, {
+            tanggal: payload.tanggal,
+            id_barang: item.id_barang,
+            kode_barang: item.kode_barang,
+            nama_barang: item.nama_barang,
+            kategori: item.kategori,
+            jumlah_keluar: qty,
+            satuan: item.satuan,
+            harga_unit: hrgOut,
+            total_nilai: qty * hrgOut,
+            tujuan_distribusi: payload.tujuan_distribusi,
+            nama_penerima: payload.nama_penerima,
+            no_gdn: payload.no_gdn,
+            no_request: payload.no_request,
+            penanggung_jawab: payload.penanggung_jawab,
+            catatan: payload.catatan
+          });
+        }
+      } else {
+        APP_STATE.transaksiKeluar.unshift({
+          id_keluar: 'OUT-TEMP-' + Date.now(),
+          no_transaksi: APP_STATE.nextAutoNumberOut,
+          tanggal: payload.tanggal,
+          id_barang: item.id_barang,
+          kode_barang: item.kode_barang,
+          nama_barang: item.nama_barang,
+          kategori: item.kategori,
+          jumlah_keluar: qty,
+          satuan: item.satuan,
+          harga_unit: hrgOut,
+          total_nilai: qty * hrgOut,
+          tujuan_distribusi: payload.tujuan_distribusi,
+          nama_penerima: payload.nama_penerima,
+          no_gdn: payload.no_gdn,
+          no_request: payload.no_request,
+          penanggung_jawab: payload.penanggung_jawab,
+          catatan: payload.catatan
+        });
+      }
+      recomputeAllStateLocally();
+      showToast('Transaksi Barang Keluar berhasil disimpan (-' + formatNumber(qty) + ' ' + item.satuan + ').', 'success');
+    }
 
     readFileAsBase64(fileInput).then(function(fileObj) {
       if (fileObj) {
@@ -1632,12 +2428,11 @@
         payload.dokumen_name = fileObj.name;
         payload.dokumen_mime = fileObj.mime;
       }
-      return callServerApi('SAVE_TRANSAKSI_KELUAR', payload, { loadingTitle: 'Memvalidasi Stok & Menyimpan Barang Keluar...' });
-    }).then(function(res) {
-      bootstrap.Modal.getInstance(document.getElementById('modalTransaksiKeluar')).hide();
-      showToast(res.message, 'success');
-      loadMasterBarangData(true);
-      loadTransaksiKeluarData();
+      return callServerApi('SAVE_TRANSAKSI_KELUAR', payload, { silent: true });
+    }).then(function() {
+      syncInitialBundleSilently();
+    }).catch(function() {
+      syncInitialBundleSilently();
     });
   }
 
@@ -1662,12 +2457,17 @@
       confirmIcon: 'bi-trash3'
     }).then(function(alasan) {
       if (alasan === null) return;
-      callServerApi('DELETE_TRANSAKSI_KELUAR', { id_keluar: idKeluar, alasan: alasan })
-        .then(function(res) {
-          showToast(res.message, 'success');
-          loadMasterBarangData(true);
-          loadTransaksiKeluarData();
-          loadDashboardData(true);
+      // Optimistic Delete (< 10ms)
+      APP_STATE.transaksiKeluar = APP_STATE.transaksiKeluar.filter(function(x) { return x.id_keluar !== idKeluar; });
+      recomputeAllStateLocally();
+      showToast('Transaksi Barang Keluar ' + tx.no_transaksi + ' telah dihapus.', 'success');
+
+      callServerApi('DELETE_TRANSAKSI_KELUAR', { id_keluar: idKeluar, alasan: alasan }, { silent: true })
+        .then(function() {
+          syncInitialBundleSilently();
+        })
+        .catch(function() {
+          syncInitialBundleSilently();
         });
     });
   }
@@ -1694,6 +2494,139 @@
     loadKartuStokData();
   }
 
+  function computeKartuStokLocally(idBarang, startDate, endDate) {
+    var item = APP_STATE.masterBarang.find(function(x) { return x.id_barang === idBarang; });
+    if (!item) return null;
+    var hargaDefault = Number(item.harga_unit) || 0;
+    var rawEvents = [];
+
+    for (var m = 0; m < APP_STATE.transaksiMasuk.length; m++) {
+      var txIn = APP_STATE.transaksiMasuk[m];
+      if (String(txIn.id_barang) !== String(idBarang)) continue;
+      rawEvents.push({
+        tanggal: String(txIn.tanggal || '').substring(0, 10),
+        orderPriority: 1,
+        no_dokumen: (txIn.no_grn && txIn.no_grn !== '-') ? (txIn.no_transaksi + ' / ' + txIn.no_grn) : txIn.no_transaksi,
+        jenis: 'MASUK',
+        keterangan: txIn.catatan || 'Penerimaan Barang Masuk',
+        masuk: Number(txIn.jumlah_masuk) || 0,
+        keluar: 0,
+        harga_satuan: Number(txIn.harga_unit) || hargaDefault,
+        sumber_barang: txIn.sumber_donor || '-',
+        tujuan_distribusi: '-'
+      });
+    }
+
+    for (var k = 0; k < APP_STATE.transaksiKeluar.length; k++) {
+      var txOut = APP_STATE.transaksiKeluar[k];
+      if (String(txOut.id_barang) !== String(idBarang)) continue;
+      rawEvents.push({
+        tanggal: String(txOut.tanggal || '').substring(0, 10),
+        orderPriority: 2,
+        no_dokumen: (txOut.no_gdn && txOut.no_gdn !== '-') ? (txOut.no_transaksi + ' / ' + txOut.no_gdn) : txOut.no_transaksi,
+        jenis: 'KELUAR',
+        keterangan: txOut.catatan || ('Distribusi ke ' + txOut.tujuan_distribusi),
+        masuk: 0,
+        keluar: Number(txOut.jumlah_keluar) || 0,
+        harga_satuan: Number(txOut.harga_unit) || hargaDefault,
+        sumber_barang: '-',
+        tujuan_distribusi: txOut.tujuan_distribusi + (txOut.nama_penerima ? ' (' + txOut.nama_penerima + ')' : '')
+      });
+    }
+
+    for (var o = 0; o < APP_STATE.stockOpnameList.length; o++) {
+      var op = APP_STATE.stockOpnameList[o];
+      if (String(op.id_barang) !== String(idBarang) || String(op.status_persetujuan).toUpperCase() !== 'APPROVED') continue;
+      var diff = Number(op.selisih) || 0;
+      if (diff === 0) continue;
+      rawEvents.push({
+        tanggal: String(op.tanggal_periksa || op.tanggal_jadwal || '').substring(0, 10),
+        orderPriority: 3,
+        no_dokumen: op.no_opname,
+        jenis: 'PENYESUAIAN OPNAME',
+        keterangan: 'Penyesuaian Stock Opname Disetujui (' + (op.alasan_selisih || 'Opname Fisik') + ')',
+        masuk: diff > 0 ? diff : 0,
+        keluar: diff < 0 ? Math.abs(diff) : 0,
+        harga_satuan: Number(op.harga_unit) || hargaDefault,
+        sumber_barang: diff > 0 ? 'Penyesuaian Opname (+)' : '-',
+        tujuan_distribusi: diff < 0 ? 'Penyesuaian Opname (-)' : '-'
+      });
+    }
+
+    rawEvents.sort(function(a, b) {
+      if (a.tanggal !== b.tanggal) return a.tanggal.localeCompare(b.tanggal);
+      return a.orderPriority - b.orderPriority;
+    });
+
+    var runningBalance = 0;
+    var saldoSebelum = 0;
+    var filteredRows = [];
+    var totIn = 0;
+    var totOut = 0;
+
+    for (var e = 0; e < rawEvents.length; e++) {
+      var ev = rawEvents[e];
+      var prev = runningBalance;
+      runningBalance = prev + ev.masuk - ev.keluar;
+      if (startDate && ev.tanggal < startDate) {
+        saldoSebelum = runningBalance;
+        continue;
+      }
+      if (endDate && ev.tanggal > endDate) continue;
+      totIn += ev.masuk;
+      totOut += ev.keluar;
+      filteredRows.push({
+        tanggal: ev.tanggal,
+        no_dokumen: ev.no_dokumen,
+        jenis: ev.jenis,
+        keterangan: ev.keterangan,
+        saldo_sebelumnya: prev,
+        barang_masuk: ev.masuk,
+        barang_keluar: ev.keluar,
+        saldo_stok: runningBalance,
+        harga_satuan: ev.harga_satuan,
+        nilai_persediaan: runningBalance * ev.harga_satuan,
+        sumber_barang: ev.sumber_barang,
+        tujuan_distribusi: ev.tujuan_distribusi
+      });
+    }
+
+    if (startDate) {
+      filteredRows.unshift({
+        tanggal: startDate,
+        no_dokumen: 'SALDO-AWAL',
+        jenis: 'SALDO AWAL PERIODE',
+        keterangan: 'Saldo Stok Sebelum Tanggal ' + startDate,
+        saldo_sebelumnya: saldoSebelum,
+        barang_masuk: 0,
+        barang_keluar: 0,
+        saldo_stok: saldoSebelum,
+        harga_satuan: hargaDefault,
+        nilai_persediaan: saldoSebelum * hargaDefault,
+        sumber_barang: item.sumber_donor || '-',
+        tujuan_distribusi: '-'
+      });
+    }
+
+    var finalBal = filteredRows.length > 0
+      ? filteredRows[filteredRows.length - 1].saldo_stok
+      : (startDate ? saldoSebelum : runningBalance);
+
+    return {
+      item: item,
+      summary: {
+        startDate: startDate || 'Awal Pencatatan',
+        endDate: endDate || new Date().toISOString().substring(0, 10),
+        saldoAwalPeriode: startDate ? saldoSebelum : 0,
+        totalMasukPeriode: totIn,
+        totalKeluarPeriode: totOut,
+        saldoAkhirPeriode: finalBal,
+        nilaiPersediaanAkhir: finalBal * hargaDefault
+      },
+      ledger: filteredRows
+    };
+  }
+
   function loadKartuStokData() {
     var idBarang = document.getElementById('stockCardItemSelect').value;
     if (!idBarang) {
@@ -1703,7 +2636,15 @@
     var startDate = document.getElementById('stockCardStartDate').value;
     var endDate = document.getElementById('stockCardEndDate').value;
 
-    callServerApi('GET_KARTU_STOK', { id_barang: idBarang, startDate: startDate, endDate: endDate }, { loadingTitle: 'Menyusun Kartu Stok Kronologis...' })
+    // 1. Hitung dan tampilkan instan (< 5ms) dari state lokal
+    var localKs = computeKartuStokLocally(idBarang, startDate, endDate);
+    if (localKs) {
+      APP_STATE.activeKartuStok = localKs;
+      renderKartuStokView(localKs);
+    }
+
+    // 2. Verifikasi silent di background
+    callServerApi('GET_KARTU_STOK', { id_barang: idBarang, startDate: startDate, endDate: endDate }, { silent: true })
       .then(function(res) {
         APP_STATE.activeKartuStok = res.data;
         renderKartuStokView(res.data);
@@ -1757,12 +2698,14 @@
    * 10. STOCK OPNAME & PERSETUJUAN ADMIN (BAB 8)
    * ========================================================================== */
   function loadStockOpnameData() {
-    var kat = document.getElementById('filterOpnameKategori').value;
-    var status = document.getElementById('filterOpnameStatus').value;
-    callServerApi('GET_STOCK_OPNAME', { kategori: kat, status: status }, { silent: true })
+    // Render langsung (< 5ms) dari state lokal
+    renderStockOpnameTable();
+
+    callServerApi('GET_STOCK_OPNAME', { kategori: 'SEMUA', status: 'SEMUA' }, { silent: true })
       .then(function(res) {
         APP_STATE.stockOpnameList = res.data.records || [];
         APP_STATE.nextAutoNumberOpname = res.data.nextAutoNumber || 'SO-AUTO';
+        APP_STATE.lastBundleSyncMs = Date.now();
         saveFastStateCache();
         renderStockOpnameTable();
       });
@@ -1770,10 +2713,14 @@
 
   function renderStockOpnameTable() {
     var q = (document.getElementById('filterOpnameSearch').value || '').trim().toLowerCase();
+    var kat = document.getElementById('filterOpnameKategori') ? document.getElementById('filterOpnameKategori').value : 'SEMUA';
+    var status = document.getElementById('filterOpnameStatus') ? document.getElementById('filterOpnameStatus').value : 'SEMUA';
     var canApprove = APP_STATE.permissions.canApproveStockOpname;
     var tbody = document.getElementById('stockOpnameTableBody');
 
     var filtered = APP_STATE.stockOpnameList.filter(function(r) {
+      if (kat && kat !== 'SEMUA' && r.kategori !== kat) return false;
+      if (status && status !== 'SEMUA' && r.status_persetujuan !== status) return false;
       if (!q) return true;
       var hay = (r.no_opname + ' ' + r.kode_barang + ' ' + r.nama_barang + ' ' + r.petugas_pemeriksa + ' ' + r.alasan_selisih).toLowerCase();
       return hay.indexOf(q) !== -1;
@@ -1910,11 +2857,45 @@
       items: itemsPayload
     };
 
-    callServerApi('SAVE_STOCK_OPNAME', payload, { loadingTitle: 'Menyimpan Hasil Pemeriksaan Stock Opname...' })
-      .then(function(res) {
-        bootstrap.Modal.getInstance(document.getElementById('modalStockOpname')).hide();
-        showToast(res.message, 'success');
-        loadStockOpnameData();
+    // Optimistic UI Update (< 15ms)
+    bootstrap.Modal.getInstance(document.getElementById('modalStockOpname')).hide();
+    for (var k = 0; k < itemsPayload.length; k++) {
+      var ip = itemsPayload[k];
+      var mIt = APP_STATE.masterBarang.find(function(x) { return x.id_barang === ip.id_barang; });
+      if (!mIt) continue;
+      var sSis = Number(mIt.saldo_stok) || 0;
+      var sFis = Number(ip.stok_fisik) || 0;
+      var sel = sFis - sSis;
+      APP_STATE.stockOpnameList.unshift({
+        id_opname: 'SO-TEMP-' + Date.now() + '-' + k,
+        no_opname: APP_STATE.nextAutoNumberOpname,
+        tanggal_jadwal: payload.tanggal_jadwal,
+        tanggal_periksa: payload.tanggal_periksa,
+        id_barang: mIt.id_barang,
+        kode_barang: mIt.kode_barang,
+        nama_barang: mIt.nama_barang,
+        kategori: mIt.kategori,
+        satuan: mIt.satuan,
+        harga_unit: mIt.harga_unit,
+        stok_sistem: sSis,
+        stok_fisik: sFis,
+        selisih: sel,
+        nilai_selisih: sel * (Number(mIt.harga_unit) || 0),
+        alasan_selisih: ip.alasan_selisih || (sel === 0 ? 'Sesuai fisik gudang' : 'Selisih pemeriksaan fisik'),
+        petugas_pemeriksa: payload.petugas_pemeriksa,
+        status_persetujuan: 'PENDING',
+        disetujui_oleh: '-'
+      });
+    }
+    recomputeAllStateLocally();
+    showToast(itemsPayload.length + ' data pemeriksaan Stock Opname disimpan (PENDING).', 'success');
+
+    callServerApi('SAVE_STOCK_OPNAME', payload, { silent: true })
+      .then(function() {
+        syncInitialBundleSilently();
+      })
+      .catch(function() {
+        syncInitialBundleSilently();
       });
   }
 
@@ -1942,12 +2923,18 @@
       confirmIcon: isApprove ? 'bi-check2-all' : 'bi-x-circle'
     }).then(function(confirmed) {
       if (!confirmed) return;
-      callServerApi('APPROVE_STOCK_OPNAME', { id_opname: idOpname, decision: decision })
-        .then(function(res) {
-          showToast(res.message, 'success');
-          loadMasterBarangData(true);
-          loadStockOpnameData();
-          loadDashboardData(true);
+      // Optimistic Approval (< 10ms)
+      rec.status_persetujuan = decision;
+      rec.disetujui_oleh = (APP_STATE.user ? APP_STATE.user.nama_lengkap : 'Admin');
+      recomputeAllStateLocally();
+      showToast('Stock Opname ' + rec.no_opname + ' telah ' + (isApprove ? 'DISETUJUI & stok disesuaikan.' : 'DITOLAK.'), 'success');
+
+      callServerApi('APPROVE_STOCK_OPNAME', { id_opname: idOpname, decision: decision }, { silent: true })
+        .then(function() {
+          syncInitialBundleSilently();
+        })
+        .catch(function() {
+          syncInitialBundleSilently();
         });
     });
   }
@@ -1960,23 +2947,36 @@
     loadExpiredMonitoringData();
   }
 
-  function loadExpiredMonitoringData() {
-    var payload = {
-      search: document.getElementById('filterExpSearch').value.trim(),
-      kategori: document.getElementById('filterExpKategori').value,
-      status_expired: document.getElementById('filterExpStatus').value,
-      startDate: document.getElementById('filterExpStartDate').value,
-      endDate: document.getElementById('filterExpEndDate').value
-    };
+  function loadExpiredMonitoringData(shouldSyncServer) {
+    var q = (document.getElementById('filterExpSearch').value || '').trim().toLowerCase();
+    var kat = document.getElementById('filterExpKategori').value || 'SEMUA';
+    var st = document.getElementById('filterExpStatus').value || 'SEMUA';
+    var sDate = document.getElementById('filterExpStartDate').value;
+    var eDate = document.getElementById('filterExpEndDate').value;
 
-    callServerApi('GET_EXPIRED_MONITORING', payload, { silent: true })
-      .then(function(res) {
-        var sum = res.data.summary || {};
-        APP_STATE.expiredSummary = sum;
-        APP_STATE.expiredMonitoringList = res.data.items || [];
-        saveFastStateCache();
-        applyExpiredDataToDOM(sum, APP_STATE.expiredMonitoringList);
-      });
+    // Filter dan tampilkan instan (< 3ms) di browser
+    var filtered = (APP_STATE.expiredMonitoringList || []).filter(function(r) {
+      if (kat !== 'SEMUA' && r.kategori !== kat) return false;
+      if (st !== 'SEMUA' && r.status_expired !== st) return false;
+      if (sDate && r.expired_date < sDate) return false;
+      if (eDate && r.expired_date > eDate) return false;
+      if (q) {
+        var hay = (r.kode_barang + ' ' + r.nama_barang + ' ' + r.no_batch_dokumen + ' ' + r.sumber_donor).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+    applyExpiredDataToDOM(APP_STATE.expiredSummary, filtered);
+
+    if (shouldSyncServer) {
+      callServerApi('GET_EXPIRED_MONITORING', {}, { silent: true })
+        .then(function(res) {
+          APP_STATE.expiredSummary = res.data.summary || {};
+          APP_STATE.expiredMonitoringList = res.data.items || [];
+          saveFastStateCache();
+          loadExpiredMonitoringData(false);
+        });
+    }
   }
 
   function applyExpiredDataToDOM(sum, list) {
@@ -2027,6 +3027,157 @@
     generateSelectedReport();
   }
 
+  function computeReportLocally(payload) {
+    var reportType = String(payload.reportType || 'STOK_KESELURUHAN').toUpperCase();
+    var startDate = payload.startDate || '';
+    var endDate = payload.endDate || '';
+    var filterKat = String(payload.kategori || 'SEMUA').toUpperCase();
+    var filterSumber = String(payload.sumberDonor || '').toLowerCase();
+    var filterBarang = String(payload.namaBarang || '').toLowerCase();
+    var allItems = APP_STATE.masterBarang || [];
+
+    var reportTitle = 'LAPORAN STOK KESELURUHAN GUDANG PMI KOTA SURAKARTA';
+    var columns = [];
+    var rows = [];
+    var summary = {};
+
+    function matchMaster(it, forcedCat) {
+      var targetCat = forcedCat || filterKat;
+      if (targetCat && targetCat !== 'SEMUA' && it.kategori !== targetCat) return false;
+      if (filterBarang && (it.kode_barang + ' ' + it.nama_barang).toLowerCase().indexOf(filterBarang) === -1) return false;
+      if (filterSumber && String(it.sumber_donor || '').toLowerCase().indexOf(filterSumber) === -1) return false;
+      return true;
+    }
+
+    if (reportType === 'STOK_KESELURUHAN' || reportType === 'STOK_FOOD' || reportType === 'STOK_NON_FOOD' || reportType === 'STOK_OBAT') {
+      var forced = reportType === 'STOK_FOOD' ? 'FOOD ITEMS' : (reportType === 'STOK_NON_FOOD' ? 'NON FOOD' : (reportType === 'STOK_OBAT' ? 'OBAT' : null));
+      if (forced) reportTitle = 'LAPORAN PERSEDIAAN STOK KATEGORI ' + forced;
+      columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Harga Satuan (Rp)', 'Sumber', 'Total Masuk', 'Total Keluar', 'Penyesuaian', 'Saldo Stok', 'Total Nilai (Rp)', 'Expired Terdekat', 'Lokasi Rak', 'Status Stok'];
+      var totJenis = 0, totSaldo = 0, totNilai = 0;
+      for (var i = 0; i < allItems.length; i++) {
+        var it = allItems[i];
+        if (!matchMaster(it, forced)) continue;
+        totJenis++;
+        totSaldo += Number(it.saldo_stok) || 0;
+        totNilai += Number(it.total_nilai) || 0;
+        rows.push([totJenis, it.kode_barang, it.nama_barang, it.kategori, it.satuan, Number(it.harga_unit)||0, it.sumber_donor, Number(it.total_masuk)||0, Number(it.total_keluar)||0, Number(it.penyesuaian_opname)||0, Number(it.saldo_stok)||0, Number(it.total_nilai)||0, it.nearest_expired_date || '-', it.lokasi_rak, it.status_stok]);
+      }
+      summary = {
+        'Total Jenis Barang': totJenis + ' Jenis',
+        'Total Saldo Unit': formatNumber(totSaldo) + ' Unit',
+        'Total Nilai Persediaan': formatRupiah(totNilai)
+      };
+    } else if (reportType === 'BARANG_MASUK') {
+      reportTitle = 'LAPORAN TRANSAKSI PENERIMAAN BARANG MASUK (GRN)';
+      columns = ['No', 'No. Transaksi', 'Tanggal', 'No. Dokumen GRN', 'No. Request', 'Kode Barang', 'Nama Barang', 'Kategori', 'Jumlah Masuk', 'Satuan', 'Harga Unit (Rp)', 'Total Nilai (Rp)', 'Sumber', 'Expired Date', 'Catatan'];
+      var cIn = 0, sQIn = 0, sVIn = 0;
+      for (var m = 0; m < APP_STATE.transaksiMasuk.length; m++) {
+        var rIn = APP_STATE.transaksiMasuk[m];
+        if (startDate && rIn.tanggal < startDate) continue;
+        if (endDate && rIn.tanggal > endDate) continue;
+        if (filterKat !== 'SEMUA' && rIn.kategori !== filterKat) continue;
+        if (filterBarang && (rIn.kode_barang + ' ' + rIn.nama_barang).toLowerCase().indexOf(filterBarang) === -1) continue;
+        if (filterSumber && String(rIn.sumber_donor || '').toLowerCase().indexOf(filterSumber) === -1) continue;
+        cIn++; sQIn += Number(rIn.jumlah_masuk)||0; sVIn += Number(rIn.total_nilai)||0;
+        rows.push([cIn, rIn.no_transaksi, rIn.tanggal, rIn.no_grn||'-', rIn.no_request||'-', rIn.kode_barang, rIn.nama_barang, rIn.kategori, Number(rIn.jumlah_masuk)||0, rIn.satuan, Number(rIn.harga_unit)||0, Number(rIn.total_nilai)||0, rIn.sumber_donor||'-', rIn.expired_date||'-', rIn.catatan||'-']);
+      }
+      summary = { 'Jumlah Transaksi Masuk': cIn + ' Transaksi', 'Total Unit Diterima': formatNumber(sQIn) + ' Unit', 'Total Nilai Penerimaan': formatRupiah(sVIn) };
+    } else if (reportType === 'BARANG_KELUAR' || reportType === 'DISTRIBUSI_BANTUAN') {
+      reportTitle = reportType === 'BARANG_KELUAR' ? 'LAPORAN TRANSAKSI PENGELUARAN BARANG KELUAR (GDN)' : 'LAPORAN REALISASI DISTRIBUSI BANTUAN LOGISTIK KEMANUSIAAN';
+      columns = ['No', 'No. Transaksi', 'Tanggal', 'No. Dokumen GDN', 'No. Request', 'Kode Barang', 'Nama Barang', 'Kategori', 'Jumlah Keluar', 'Satuan', 'Harga Unit (Rp)', 'Total Nilai (Rp)', 'Tujuan Distribusi', 'Nama Penerima', 'Penanggung Jawab'];
+      var cOut = 0, sQOut = 0, sVOut = 0;
+      for (var k = 0; k < APP_STATE.transaksiKeluar.length; k++) {
+        var rOut = APP_STATE.transaksiKeluar[k];
+        if (startDate && rOut.tanggal < startDate) continue;
+        if (endDate && rOut.tanggal > endDate) continue;
+        if (filterKat !== 'SEMUA' && rOut.kategori !== filterKat) continue;
+        if (filterBarang && (rOut.kode_barang + ' ' + rOut.nama_barang).toLowerCase().indexOf(filterBarang) === -1) continue;
+        cOut++; sQOut += Number(rOut.jumlah_keluar)||0; sVOut += Number(rOut.total_nilai)||0;
+        rows.push([cOut, rOut.no_transaksi, rOut.tanggal, rOut.no_gdn||'-', rOut.no_request||'-', rOut.kode_barang, rOut.nama_barang, rOut.kategori, Number(rOut.jumlah_keluar)||0, rOut.satuan, Number(rOut.harga_unit)||0, Number(rOut.total_nilai)||0, rOut.tujuan_distribusi, rOut.nama_penerima, rOut.penanggung_jawab]);
+      }
+      summary = { 'Total Transaksi Keluar': cOut + ' Transaksi', 'Total Unit Terdistribusi': formatNumber(sQOut) + ' Unit', 'Total Nilai Bantuan': formatRupiah(sVOut) };
+    } else if (reportType === 'NILAI_PERSEDIAAN') {
+      reportTitle = 'LAPORAN VALUASI NILAI PERSEDIAAN ASET LOGISTIK GUDANG';
+      columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Sumber', 'Satuan', 'Saldo Stok', 'Harga Per Unit (Rp)', 'Total Nilai Persediaan (Rp)'];
+      var noV = 0, gVal = 0;
+      for (var v = 0; v < allItems.length; v++) {
+        var fv = allItems[v];
+        if (!matchMaster(fv)) continue;
+        noV++; gVal += Number(fv.total_nilai)||0;
+        rows.push([noV, fv.kode_barang, fv.nama_barang, fv.kategori, fv.sumber_donor, fv.satuan, Number(fv.saldo_stok)||0, Number(fv.harga_unit)||0, Number(fv.total_nilai)||0]);
+      }
+      summary = { 'Jumlah Item Dihitung': noV + ' Jenis Barang', 'Total Nilai Persediaan Gudang': formatRupiah(gVal) };
+    } else if (reportType === 'STOK_MINIMUM') {
+      reportTitle = 'LAPORAN DAFTAR BARANG STOK MINIMUM / KRITIS (REORDER ALERT)';
+      columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Saldo Stok Saat Ini', 'Batas Stok Minimum', 'Kekurangan Stok', 'Lokasi Rak', 'Sumber', 'Status Kritis'];
+      var cMin = 0;
+      for (var sm = 0; sm < allItems.length; sm++) {
+        var itM = allItems[sm];
+        if (!matchMaster(itM) || (Number(itM.saldo_stok)||0) > (Number(itM.stok_minimum)||0)) continue;
+        cMin++;
+        rows.push([cMin, itM.kode_barang, itM.nama_barang, itM.kategori, itM.satuan, Number(itM.saldo_stok)||0, Number(itM.stok_minimum)||0, Math.max(0, (Number(itM.stok_minimum)||0) - (Number(itM.saldo_stok)||0)), itM.lokasi_rak, itM.sumber_donor, itM.status_stok]);
+      }
+      summary = { 'Total Barang Stok Menipis/Kritis': cMin + ' Jenis' };
+    } else if (reportType === 'BARANG_KEDALUWARSA') {
+      reportTitle = 'LAPORAN MONITORING TANGGAL KEDALUWARSA BARANG (EXPIRED DATE)';
+      columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'No. Dokumen/GRN', 'Sumber', 'Saldo Stok', 'Satuan', 'Tanggal Kedaluwarsa', 'Sisa Hari', 'Status Kedaluwarsa', 'Lokasi Rak'];
+      var expItems = APP_STATE.expiredMonitoringList || [];
+      for (var ex = 0; ex < expItems.length; ex++) {
+        var eR = expItems[ex];
+        if (filterKat !== 'SEMUA' && eR.kategori !== filterKat) continue;
+        if (filterBarang && (eR.kode_barang + ' ' + eR.nama_barang).toLowerCase().indexOf(filterBarang) === -1) continue;
+        rows.push([rows.length + 1, eR.kode_barang, eR.nama_barang, eR.kategori, eR.no_batch_dokumen, eR.sumber_donor, Number(eR.saldo_stok_saat_ini)||0, eR.satuan, eR.expired_date, eR.days_remaining + ' Hari', eR.status_expired, eR.lokasi_rak]);
+      }
+      summary = { 'Total Batch Dipantau': rows.length + ' Batch' };
+    } else if (reportType === 'STOCK_OPNAME') {
+      reportTitle = 'LAPORAN PEMERIKSAAN FISIK PERSEDIAAN (STOCK OPNAME)';
+      columns = ['No', 'No. Opname', 'Tgl Periksa', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Stok Sistem', 'Stok Fisik', 'Selisih', 'Nilai Selisih (Rp)', 'Alasan Selisih', 'Petugas Pemeriksa', 'Status Persetujuan'];
+      for (var so = 0; so < APP_STATE.stockOpnameList.length; so++) {
+        var rSo = APP_STATE.stockOpnameList[so];
+        if (filterKat !== 'SEMUA' && rSo.kategori !== filterKat) continue;
+        rows.push([rows.length + 1, rSo.no_opname, rSo.tanggal_periksa, rSo.kode_barang, rSo.nama_barang, rSo.kategori, rSo.satuan, Number(rSo.stok_sistem)||0, Number(rSo.stok_fisik)||0, Number(rSo.selisih)||0, Number(rSo.nilai_selisih)||0, rSo.alasan_selisih||'-', rSo.petugas_pemeriksa, rSo.status_persetujuan]);
+      }
+      summary = { 'Total Pemeriksaan Opname': rows.length + ' Record' };
+    } else {
+      reportTitle = 'LAPORAN REKAPITULASI PENERIMAAN & PERSEDIAAN BERDASARKAN SUMBER BARANG';
+      columns = ['No', 'Sumber Barang', 'Jumlah Jenis Barang', 'Total Unit Masuk', 'Saldo Stok Tersisa', 'Total Nilai Kontribusi (Rp)'];
+      var agg = {};
+      for (var ai = 0; ai < allItems.length; ai++) {
+        var mIt = allItems[ai];
+        if (!matchMaster(mIt)) continue;
+        var sKey = String(mIt.sumber_donor || 'LAINNYA').toUpperCase();
+        if (!agg[sKey]) agg[sKey] = { jenis: 0, masuk: 0, saldo: 0, nilai: 0 };
+        agg[sKey].jenis++;
+        agg[sKey].masuk += Number(mIt.total_masuk) || 0;
+        agg[sKey].saldo += Number(mIt.saldo_stok) || 0;
+        agg[sKey].nilai += Number(mIt.total_nilai) || 0;
+      }
+      var sKeys = Object.keys(agg);
+      for (var sk = 0; sk < sKeys.length; sk++) {
+        var oS = agg[sKeys[sk]];
+        rows.push([sk + 1, sKeys[sk], oS.jenis, oS.masuk, oS.saldo, oS.nilai]);
+      }
+      summary = { 'Total Mitra Sumber': sKeys.length + ' Sumber' };
+    }
+
+    return {
+      reportType: reportType,
+      reportTitle: reportTitle,
+      metadata: {
+        instansi: APP_STATE.settings.NAMA_INSTANSI,
+        alamat: APP_STATE.settings.ALAMAT_INSTANSI,
+        telepon: APP_STATE.settings.TELEPON_INSTANSI,
+        periode: (startDate || endDate) ? ((startDate || 'Awal') + ' s/d ' + (endDate || 'Sekarang')) : 'Semua Periode',
+        tanggalCetak: new Date().toLocaleString('id-ID'),
+        koordinatorGudang: APP_STATE.settings.NAMA_KOORDINATOR_GUDANG,
+        kepalaMarkas: APP_STATE.settings.NAMA_KEPALA_MARKAS
+      },
+      columns: columns,
+      rows: rows,
+      summary: summary
+    };
+  }
+
   function generateSelectedReport() {
     var payload = {
       reportType: document.getElementById('reportTypeSelect').value,
@@ -2037,7 +3188,13 @@
       namaBarang: document.getElementById('reportBarangInput').value.trim()
     };
 
-    callServerApi('GENERATE_REPORT', payload, { loadingTitle: 'Menyusun Laporan Resmi PMI...' })
+    // 1. Hitung dan tampilkan instan (< 5ms) dari state lokal
+    var localRep = computeReportLocally(payload);
+    APP_STATE.activeReportData = localRep;
+    renderReportPreview(localRep);
+
+    // 2. Verifikasi silent di background
+    callServerApi('GENERATE_REPORT', payload, { silent: true })
       .then(function(res) {
         APP_STATE.activeReportData = res.data;
         renderReportPreview(res.data);
