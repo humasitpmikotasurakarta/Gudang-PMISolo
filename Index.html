@@ -146,18 +146,20 @@
               </div>
             </div>
           </div>
-          
-          <div class="d-flex align-items-center justify-content-between mt-3 pt-2 border-top small">
-            <span class="text-muted" style="font-size: 0.73rem;">
-              <i class="bi bi-cloud-check-fill text-success me-1"></i>Backend: <strong id="gasConnectionModeLabel">Google Apps Script API</strong>
-            </span>
-            <a href="javascript:void(0)" class="text-danger fw-bold text-decoration-none" style="font-size: 0.73rem;" onclick="openGasUrlConfigPopup()">
-              <i class="bi bi-link-45deg"></i> Atur URL GAS
-            </a>
-          </div>
-        </div> -->
-      </div>
+          <!-- Bar Konfigurasi Koneksi Vercel <-> GAS -->
+        <div class="d-flex align-items-center justify-content-between mt-3 pt-2 border-top small">
+          <span class="text-muted" style="font-size: 0.73rem;">
+            <i class="bi bi-cloud-check-fill text-success me-1"></i>Backend: <strong id="gasConnectionModeLabel">Google
+              Apps Script API</strong>
+          </span>
+          <a href="javascript:void(0)" class="text-danger fw-bold text-decoration-none" style="font-size: 0.73rem;"
+            onclick="openGasUrlConfigPopup()">
+            <i class="bi bi-link-45deg"></i> Atur URL GAS
+          </a>
+        </div>
+      </div> -->
     </div>
+  </div>
   </div>
 
   <!-- ========================================================================
@@ -295,10 +297,59 @@
               Persediaan &amp; Distribusi Bantuan</div>
           </div>
 
-          <!-- Tombol Notifikasi Peringatan Stok & Expired -->
-          <div class="notif-bell-btn" onclick="switchView('expired')" title="Notifikasi Stok Kritis & Kedaluwarsa">
-            <i class="bi bi-bell"></i>
-            <span id="topNotifCount" class="notif-dot d-none">0</span>
+          <!-- Tombol & Panel Dropdown Pusat Notifikasi (Stok Kritis, Expired & Opname) -->
+          <div class="notif-dropdown-wrapper" id="notifDropdownWrapper">
+            <button type="button" class="notif-bell-btn" id="notifBellBtn" onclick="toggleNotificationDropdown(event)" title="Pusat Notifikasi Gudang">
+              <i class="bi bi-bell-fill"></i>
+              <span id="topNotifCount" class="notif-dot d-none">0</span>
+            </button>
+
+            <div class="notif-dropdown-panel" id="notifDropdownPanel" onclick="event.stopPropagation()">
+              <div class="notif-panel-header">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="notif-header-icon"><i class="bi bi-bell-fill"></i></div>
+                  <div>
+                    <div class="notif-panel-title">Pusat Notifikasi</div>
+                    <div class="notif-panel-sub" id="notifHeaderSubtitle">Memantau stok &amp; kedaluwarsa</div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge rounded-pill bg-danger" id="notifHeaderBadge">0</span>
+                  <button type="button" class="btn-notif-read" onclick="markAllNotificationsRead()" title="Tandai semua sudah dilihat">
+                    <i class="bi bi-check2-all"></i> Dibaca
+                  </button>
+                </div>
+              </div>
+
+              <!-- Filter Kategori Notifikasi -->
+              <div class="notif-filter-tabs">
+                <button type="button" class="notif-tab-btn active" data-filter="ALL" onclick="setNotificationTabFilter('ALL')">
+                  Semua <span id="notifTabCountAll">0</span>
+                </button>
+                <button type="button" class="notif-tab-btn" data-filter="EXPIRED" onclick="setNotificationTabFilter('EXPIRED')">
+                  Expired <span id="notifTabCountExp">0</span>
+                </button>
+                <button type="button" class="notif-tab-btn" data-filter="STOK" onclick="setNotificationTabFilter('STOK')">
+                  Stok Kritis <span id="notifTabCountStok">0</span>
+                </button>
+                <button type="button" class="notif-tab-btn" data-filter="OPNAME" onclick="setNotificationTabFilter('OPNAME')">
+                  Opname <span id="notifTabCountOpname">0</span>
+                </button>
+              </div>
+
+              <!-- Daftar Item Notifikasi -->
+              <div class="notif-list-body" id="notifListContainer"></div>
+
+              <!-- Footer Aksi Cepat Notifikasi -->
+              <div class="notif-panel-footer">
+                <button type="button" class="notif-footer-btn" onclick="closeNotificationDropdown(); switchView('expired');">
+                  <i class="bi bi-calendar2-x me-1"></i> Monitoring Expired
+                </button>
+                <button type="button" class="notif-footer-btn primary" onclick="closeNotificationDropdown(); openQuickReport('STOK_MINIMUM');">
+                  <i class="bi bi-exclamation-triangle me-1"></i> Laporan Stok Kritis
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Profil Pengguna Aktif -->
@@ -349,7 +400,8 @@
           </div>
         </div>
         <div class="pmi-popup-brand-tag">
-          <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="PMI" referrerpolicy="no-referrer">
+          <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="PMI"
+            referrerpolicy="no-referrer">
           <span>GUDANG PMI KOTA SURAKARTA</span>
         </div>
         <h5 class="pmi-popup-title" id="pmiPopupTitle">Konfirmasi Tindakan</h5>
@@ -357,7 +409,8 @@
         <div class="pmi-popup-detail-box d-none" id="pmiPopupDetailBox"></div>
         <div class="pmi-popup-input-wrap d-none" id="pmiPopupInputWrap">
           <label class="pmi-popup-input-label" id="pmiPopupInputLabel">ALASAN / CATATAN</label>
-          <input type="text" id="pmiPopupInput" class="pmi-popup-input" placeholder="Masukkan alasan..." onkeydown="handlePopupInputKeydown(event)">
+          <input type="text" id="pmiPopupInput" class="pmi-popup-input" placeholder="Masukkan alasan..."
+            onkeydown="handlePopupInputKeydown(event)">
         </div>
       </div>
       <div class="pmi-popup-footer">
