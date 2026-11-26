@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SISTEM INFORMASI MANAJEMEN STOK GUDANG - PMI KOTA SURAKARTA</title>
+  <link rel="icon" href="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU">
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- Bootstrap 5.3 CSS & Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
+  <!-- Chart.js 4 untuk Grafik Interaktif Dashboard -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- SheetJS (xlsx) untuk Import & Export Excel (.xlsx) Multi-Sheet -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Include CSS Modular -->
+  <?!= include('CSS'); ?>
+</head>
+
+<body>
+
+  <!-- OVERLAY LOADING GLOBAL -->
+  <div id="globalLoadingOverlay" class="loading-overlay">
+    <div class="loading-box">
+      <div class="spinner-border text-danger" role="status"></div>
+      <div>
+        <div class="fw-bold text-dark" id="loadingTextTitle">Memproses Data Gudang...</div>
+        <div class="small text-muted" id="loadingTextSub">Mohon tunggu sebentar, sedang berkomunikasi dengan server.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 10050;" id="toastContainer"></div>
+
+  <!-- ========================================================================
+       1. HALAMAN LOGIN (AUTH SCREEN)
+       ======================================================================== -->
+  <div id="authScreen" class="login-wrapper">
+    <div class="login-card">
+      <!-- Sisi Kiri: Identitas PMI Kota Surakarta -->
+      <div class="login-brand-side">
+        <div>
+          <div class="d-flex align-items-center gap-3 mb-4">
+            <div class="pmi-cross-logo">
+              <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU"
+                alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer">
+            </div>
+            <div>
+              <div class="fw-bold small text-uppercase" style="letter-spacing: 1.2px; opacity: 0.9;">PALANG MERAH
+                INDONESIA</div>
+              <div class="fs-5 fw-bolder">KOTA SURAKARTA</div>
+            </div>
+          </div>
+          <h2 class="fw-bolder mb-3" style="font-size: 1.65rem; line-height: 1.3;">
+            SISTEM INFORMASI MANAJEMEN STOK GUDANG
+          </h2>
+          <p class="mb-4" style="font-size: 0.9rem; opacity: 0.9; line-height: 1.6;">
+            Pengelolaan Logistik, Persediaan, dan Distribusi Bantuan Tanggap Darurat Bencana secara Terpadu, Akurat, dan
+            Real-Time.
+          </p>
+          <div class="d-flex flex-column gap-2 small" style="opacity: 0.92;">
+            <div><i class="bi bi-check2-circle me-2"></i>Multi-Kategori: <strong>FOOD ITEMS, NON FOOD, OBAT</strong>
+            </div>
+            <div><i class="bi bi-check2-circle me-2"></i>Kartu Stok, GRN, GDN &amp; Berita Acara Stock Opname</div>
+            <div><i class="bi bi-check2-circle me-2"></i>Monitoring Kedaluwarsa Otomatis &amp; 12 Laporan Resmi</div>
+          </div>
+        </div>
+        <div class="pt-4 border-top border-light border-opacity-25 small" style="opacity: 0.85;">
+          <div><i class="bi bi-geo-alt-fill me-1"></i> Jl. Kolonel Sutarto No. 58, Jebres, Kota Surakarta</div>
+          <div class="mt-1"><i class="bi bi-telephone-fill me-1"></i> (0271) 646505 &bull; Gudang Penanggulangan Bencana
+            (PB)</div>
+        </div>
+      </div>
+
+      <!-- Sisi Kanan: Form Login -->
+      <div class="login-form-side">
+        <div class="mb-4">
+          <span class="badge bg-danger bg-opacity-10 text-danger fw-bold px-3 py-2 rounded-pill mb-2">
+            <i class="bi bi-shield-lock-fill me-1"></i> Portal Akses Terautentikasi
+          </span>
+          <h4 class="fw-bolder text-dark mb-1">Masuk ke Aplikasi Gudang</h4>
+          <p class="text-muted small mb-0">Silakan masukkan akun pengguna sesuai hak akses Anda.</p>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLoginSubmit(event)">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-secondary">USERNAME</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-secondary"></i></span>
+              <input type="text" id="loginUsername" class="form-control bg-light border-start-0"
+                placeholder="Masukkan username (contoh: admin)" required autocomplete="username">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-secondary">PASSWORD</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-end-0"><i class="bi bi-key text-secondary"></i></span>
+              <input type="password" id="loginPassword" class="form-control bg-light border-start-0"
+                placeholder="Masukkan password" required autocomplete="current-password">
+              <button class="btn btn-outline-secondary border-start-0" type="button"
+                onclick="togglePasswordVisibility()">
+                <i class="bi bi-eye" id="togglePassIcon"></i>
+              </button>
+            </div>
+          </div>
+
+          <div id="loginErrorBox" class="alert alert-danger py-2 px-3 small d-none mb-3"></div>
+
+          <button type="submit" class="btn-pmi w-100 justify-content-center py-2.5 mt-2">
+            <i class="bi bi-box-arrow-in-right"></i> Masuk ke Sistem Gudang
+          </button>
+        </form>
+
+        <!-- Akun Akses Cepat untuk Pengujian Awal -->
+        <div class="mt-4 pt-3 border-top">
+          <div class="small fw-bold text-muted mb-2">Akun Default Pengujian (Klik untuk mengisi otomatis):</div>
+          <div class="row g-2">
+            <div class="col-4">
+              <div class="demo-account-pill text-center" onclick="fillDemoLogin('admin', 'admin123')">
+                <div class="fw-bold text-danger">ADMIN</div>
+                <div class="text-muted" style="font-size: 0.7rem;">admin / admin123</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="demo-account-pill text-center" onclick="fillDemoLogin('petugas', 'petugas123')">
+                <div class="fw-bold text-dark">PETUGAS</div>
+                <div class="text-muted" style="font-size: 0.7rem;">petugas / petugas123</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="demo-account-pill text-center" onclick="fillDemoLogin('pimpinan', 'pimpinan123')">
+                <div class="fw-bold text-primary">PIMPINAN</div>
+                <div class="text-muted" style="font-size: 0.7rem;">pimpinan / pimpinan123</div>
+              </div>
+            </div>
+          </div>
+          <!-- Bar Konfigurasi Koneksi Vercel <-> GAS -->
+          <div class="d-flex align-items-center justify-content-between mt-3 pt-2 border-top small">
+            <span class="text-muted" style="font-size: 0.73rem;">
+              <i class="bi bi-cloud-check-fill text-success me-1"></i>Backend: <strong id="gasConnectionModeLabel">Google Apps Script API</strong>
+            </span>
+            <a href="javascript:void(0)" class="text-danger fw-bold text-decoration-none" style="font-size: 0.73rem;" onclick="openGasUrlConfigPopup()">
+              <i class="bi bi-link-45deg"></i> Atur URL GAS
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       2. SHELL APLIKASI UTAMA (SETELAH LOGIN)
+       ======================================================================== -->
+  <div id="appShell" class="app-shell d-none">
+
+    <!-- SIDEBAR NAVIGASI KIRI (MERAH PMI DENGAN CURVED ACTIVE TAB) -->
+    <aside id="appSidebar" class="app-sidebar">
+      <!-- Brand Header (Stay Freeze Top) -->
+      <div class="sidebar-brand">
+        <div class="pmi-cross-logo sm">
+          <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU"
+            alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer">
+        </div>
+        <div>
+          <div class="sidebar-brand-title">GUDANG PMI</div>
+          <div class="sidebar-brand-sub">KOTA SURAKARTA</div>
+        </div>
+      </div>
+
+      <!-- Menu Navigasi Utama (Scrollable Middle) -->
+      <div class="sidebar-nav-container">
+        <ul class="sidebar-nav">
+          <li class="sidebar-section-label">Menu Utama</li>
+          <li>
+            <a class="nav-item-link active" data-view="dashboard" onclick="switchView('dashboard')">
+              <i class="bi bi-grid-1x2-fill"></i>
+              <span>Dashboard Utama</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-item-link" data-view="master-barang" onclick="switchView('master-barang')">
+              <i class="bi bi-box-seam-fill"></i>
+              <span>Master Data Barang</span>
+            </a>
+          </li>
+
+          <li class="sidebar-section-label">Operasional &amp; Mutasi</li>
+          <li>
+            <a class="nav-item-link" data-view="transaksi-masuk" onclick="switchView('transaksi-masuk')">
+              <i class="bi bi-arrow-down-left-square-fill"></i>
+              <span>Barang Masuk (GRN)</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-item-link" data-view="transaksi-keluar" onclick="switchView('transaksi-keluar')">
+              <i class="bi bi-arrow-up-right-square-fill"></i>
+              <span>Barang Keluar (GDN)</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-item-link" data-view="kartu-stok" onclick="switchView('kartu-stok')">
+              <i class="bi bi-card-checklist"></i>
+              <span>Kartu Stok (Stock Card)</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-item-link" data-view="stock-opname" onclick="switchView('stock-opname')">
+              <i class="bi bi-clipboard2-check-fill"></i>
+              <span>Stock Opname</span>
+              <span id="sidebarOpnameBadge" class="badge rounded-pill bg-warning text-dark ms-auto d-none">0</span>
+            </a>
+          </li>
+
+          <li class="sidebar-section-label">Kontrol &amp; Pelaporan</li>
+          <li>
+            <a class="nav-item-link" data-view="expired" onclick="switchView('expired')">
+              <i class="bi bi-calendar2-x-fill"></i>
+              <span>Monitoring Expired</span>
+              <span id="sidebarExpiredBadge" class="badge rounded-pill bg-light text-danger ms-auto d-none">0</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-item-link" data-view="laporan" onclick="switchView('laporan')">
+              <i class="bi bi-file-earmark-bar-graph-fill"></i>
+              <span>Pusat Laporan (12)</span>
+            </a>
+          </li>
+          <li id="navItemMigrasi">
+            <a class="nav-item-link" data-view="migrasi" onclick="switchView('migrasi')">
+              <i class="bi bi-file-earmark-spreadsheet-fill"></i>
+              <span>Migrasi Data Excel</span>
+            </a>
+          </li>
+          <li id="navItemPengaturan">
+            <a class="nav-item-link" data-view="pengaturan" onclick="switchView('pengaturan')">
+              <i class="bi bi-people-fill"></i>
+              <span>Pengguna &amp; Sistem</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Kartu Info Bawah Sidebar (Stay Freeze Bottom) -->
+      <div class="sidebar-bottom">
+        <!-- <div class="sidebar-footer-card">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-hdd-network-fill text-warning"></i>
+            <h6 class="mb-0">Gudang PB Surakarta</h6>
+          </div>
+          <p>Database terhubung ke Google Spreadsheet secara real-time.</p>
+          <button type="button" class="btn-sidebar-cta" onclick="downloadSampleExcelTemplate()">
+            <i class="bi bi-download me-1"></i> Template Excel PB
+          </button>
+        </div> -->
+        <div class="mt-2 pe-3">
+          <a class="nav-item-link text-white-50" onclick="handleLogout()">
+            <i class="bi bi-box-arrow-left"></i>
+            <span>Keluar (Logout)</span>
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- AREA KONTEN KANAN (WHITE CANVAS) -->
+    <main class="app-main">
+      <!-- TOP HEADER (STAY FREEZE) -->
+      <header class="app-topbar">
+        <div class="d-flex align-items-center gap-3">
+          <button class="btn btn-light d-lg-none border" type="button" onclick="toggleMobileSidebar()">
+            <i class="bi bi-list fs-5"></i>
+          </button>
+          <div class="topbar-search">
+            <i class="bi bi-search"></i>
+            <input type="text" id="globalSearchInput" placeholder="Cari cepat kode/nama barang, GRN, GDN..."
+              onkeydown="handleGlobalSearchKey(event)">
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+          <div class="d-none d-md-block text-end me-1">
+            <div class="fw-bold small text-danger">PALANG MERAH INDONESIA KOTA SURAKARTA</div>
+            <div class="text-muted" style="font-size: 0.72rem;" id="currentDateHeaderDisplay">Pengelolaan Logistik,
+              Persediaan &amp; Distribusi Bantuan</div>
+          </div>
+
+          <!-- Tombol Notifikasi Peringatan Stok & Expired -->
+          <div class="notif-bell-btn" onclick="switchView('expired')" title="Notifikasi Stok Kritis & Kedaluwarsa">
+            <i class="bi bi-bell"></i>
+            <span id="topNotifCount" class="notif-dot d-none">0</span>
+          </div>
+
+          <!-- Profil Pengguna Aktif -->
+          <div class="user-profile-pill">
+            <div class="user-avatar-circle" id="headerUserAvatar">A</div>
+            <div class="d-none d-sm-block">
+              <div class="fw-bold small lh-1" id="headerUserName">Administrator</div>
+              <span class="badge bg-danger bg-opacity-10 text-danger mt-1" style="font-size: 0.65rem;"
+                id="headerUserRole">ADMIN</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- KONTEN DINAMIS PER HALAMAN (SCROLLABLE AREA) -->
+      <div id="appMainContent" class="app-content">
+        <?!= include('Components'); ?>
+      </div>
+
+      <!-- FOOTER APLIKASI (STAY FREEZE) -->
+      <footer class="app-footer">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 w-100">
+          <div class="small text-muted">
+            &copy; 2026 <strong class="text-dark">Palang Merah Indonesia (PMI) Kota Surakarta</strong> &bull; Sistem
+            Informasi Manajemen Stok Gudang PB
+          </div>
+          <div class="d-none d-md-flex align-items-center gap-3 small text-muted">
+            <span><i class="bi bi-geo-alt-fill text-danger me-1"></i>Jl. Kolonel Sutarto No. 58, Jebres,
+              Surakarta</span>
+            <span><i class="bi bi-telephone-fill text-danger me-1"></i>(0271) 646505</span>
+            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">
+              <i class="bi bi-check-circle-fill me-1"></i>Database Online
+            </span>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- MODERN CUSTOM POPUP DIALOG (PENGGANTI NATIVE BROWSER CONFIRM / PROMPT) -->
+  <div id="pmiCustomPopupOverlay" class="pmi-popup-overlay" onclick="handlePopupBackdropClick(event)">
+    <div class="pmi-popup-card" id="pmiPopupCard" data-variant="danger">
+      <div class="pmi-popup-top-bar"></div>
+      <div class="pmi-popup-body">
+        <div class="pmi-popup-icon-ring" id="pmiPopupIconRing">
+          <div class="pmi-popup-icon-circle" id="pmiPopupIconCircle">
+            <i class="bi bi-box-arrow-right" id="pmiPopupIcon"></i>
+          </div>
+        </div>
+        <div class="pmi-popup-brand-tag">
+          <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="PMI" referrerpolicy="no-referrer">
+          <span>GUDANG PMI KOTA SURAKARTA</span>
+        </div>
+        <h5 class="pmi-popup-title" id="pmiPopupTitle">Konfirmasi Tindakan</h5>
+        <p class="pmi-popup-message" id="pmiPopupMessage">Apakah Anda yakin ingin melanjutkan?</p>
+        <div class="pmi-popup-detail-box d-none" id="pmiPopupDetailBox"></div>
+        <div class="pmi-popup-input-wrap d-none" id="pmiPopupInputWrap">
+          <label class="pmi-popup-input-label" id="pmiPopupInputLabel">ALASAN / CATATAN</label>
+          <input type="text" id="pmiPopupInput" class="pmi-popup-input" placeholder="Masukkan alasan..." onkeydown="handlePopupInputKeydown(event)">
+        </div>
+      </div>
+      <div class="pmi-popup-footer">
+        <button type="button" class="pmi-popup-btn-cancel" id="pmiPopupCancelBtn" onclick="resolveCustomPopup(false)">
+          Batal
+        </button>
+        <button type="button" class="pmi-popup-btn-confirm" id="pmiPopupConfirmBtn" onclick="resolveCustomPopup(true)">
+          <i class="bi bi-check2-circle" id="pmiPopupConfirmIcon"></i>
+          <span id="pmiPopupConfirmText">Ya, Lanjutkan</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTAINER KHUSUS CETAK DOKUMEN RESMI (GRN, GDN, KARTU STOK, BERITA ACARA OPNAME, 12 LAPORAN) -->
+  <div id="printableAreaContainer"></div>
+
+  <!-- Bootstrap 5.3 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Include JavaScript Modular -->
+  <?!= include('JavaScript'); ?>
+</body>
+
+</html>

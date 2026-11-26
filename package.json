@@ -1,0 +1,9 @@
+{
+  "name": "pmi-surakarta-warehouse-gas-vercel",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Sistem Informasi Manajemen Stok Gudang PMI Kota Surakarta (Vercel Frontend + Google Apps Script Backend)",
+  "scripts": {
+    "build": "node build-vercel.js"
+  }
+}

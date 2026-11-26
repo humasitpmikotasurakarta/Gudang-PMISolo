@@ -1,0 +1,1586 @@
+        <!-- ==========================================================================
+     SISTEM INFORMASI MANAJEMEN STOK GUDANG - PMI KOTA SURAKARTA
+     File: Components.html
+     Deskripsi: Seluruh tampilan halaman (Views) dan Modal Form Interaktif.
+     ========================================================================== -->
+
+<!-- ==========================================================================
+     VIEW 1: DASHBOARD UTAMA REAL-TIME (BAB 3)
+     ========================================================================== -->
+<section id="view-dashboard" class="view-section active">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Dashboard Operasional Gudang</h1>
+      <p class="page-subtitle">Ringkasan Real-Time Persediaan Logistik, Obat &amp; Distribusi Bantuan PMI Kota Surakarta</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <div class="input-group input-group-sm" style="width: auto;">
+        <span class="input-group-text bg-white"><i class="bi bi-calendar3 text-danger"></i>&nbsp;Periode</span>
+        <input type="date" id="dashStartDate" class="form-control">
+        <span class="input-group-text bg-white">s/d</span>
+        <input type="date" id="dashEndDate" class="form-control">
+        <select id="dashYearSelect" class="form-select" style="max-width: 95px;">
+          <option value="2026" selected>2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+        </select>
+        <button class="btn btn-dark" type="button" onclick="loadDashboardData()">
+          <i class="bi bi-funnel-fill"></i> Filter
+        </button>
+      </div>
+      <button class="btn-pmi" type="button" onclick="switchView('laporan')">
+        <i class="bi bi-download"></i> Download Laporan
+      </button>
+    </div>
+  </div>
+
+  <!-- 8 KARTU STATISTIK UTAMA (KPI CARDS) -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card">
+        <div>
+          <div class="kpi-label">Total Jenis Barang</div>
+          <div class="kpi-value" id="kpiTotalJenis">0</div>
+          <div class="kpi-sub">Item aktif di 3 kategori</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-boxes"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card kpi-dark">
+        <div>
+          <div class="kpi-label">Total Stok Keseluruhan</div>
+          <div class="kpi-value" id="kpiTotalStok">0</div>
+          <div class="kpi-sub">Akumulasi saldo unit tersedia</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-layers-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-3">
+      <div class="kpi-card kpi-success">
+        <div>
+          <div class="kpi-label">Total Nilai Persediaan</div>
+          <div class="kpi-value" id="kpiTotalNilai" style="font-size: 1.25rem;">Rp 0</div>
+          <div class="kpi-sub">Valuasi stok gudang saat ini</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-cash-stack"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card kpi-warning">
+        <div>
+          <div class="kpi-label">Stok Menipis / Kritis</div>
+          <div class="kpi-value" id="kpiStokMenipis">0</div>
+          <div class="kpi-sub">Di bawah batas stok minimum</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-exclamation-triangle-fill"></i></div>
+      </div>
+    </div>
+
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card kpi-success">
+        <div>
+          <div class="kpi-label">Transaksi Barang Masuk</div>
+          <div class="kpi-value" id="kpiTrxMasuk">0</div>
+          <div class="kpi-sub" id="kpiUnitMasukSub">0 unit diterima</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-box-arrow-in-down-left"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card">
+        <div>
+          <div class="kpi-label">Transaksi Barang Keluar</div>
+          <div class="kpi-value" id="kpiTrxKeluar">0</div>
+          <div class="kpi-sub" id="kpiUnitKeluarSub">0 unit terdistribusi</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-box-arrow-up-right"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card kpi-orange">
+        <div>
+          <div class="kpi-label">Mendekati Kedaluwarsa</div>
+          <div class="kpi-value" id="kpiMendekatiExpired">0</div>
+          <div class="kpi-sub">Sisa waktu 1 s/d 90 hari</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-hourglass-split"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="kpi-card kpi-danger">
+        <div>
+          <div class="kpi-label">Barang Kedaluwarsa</div>
+          <div class="kpi-value" id="kpiSudahExpired">0</div>
+          <div class="kpi-sub">Melewati tanggal expired</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-shield-x"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BARIS GRAFIK UTAMA (4 GRAFIK INTERAKTIF) -->
+  <div class="row g-4 mb-4">
+    <!-- Grafik 1: Barang Masuk dan Keluar per Bulan (Gaya PinHome Main Chart) -->
+    <div class="col-12 col-xl-8">
+      <div class="panel-card h-100 mb-0">
+        <div class="panel-header">
+          <div>
+            <h5 class="panel-title"><i class="bi bi-bar-chart-line-fill text-danger"></i> Grafik Barang Masuk &amp; Keluar per Bulan</h5>
+            <div class="small text-muted">Perbandingan volume penerimaan logistik (GRN) dan pengeluaran distribusi (GDN)</div>
+          </div>
+          <span class="badge bg-light text-dark border" id="chartYearBadge">Tahun 2026</span>
+        </div>
+        <div style="height: 290px;">
+          <canvas id="chartMonthlyInOut"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grafik 2: Stok Berdasarkan Kategori -->
+    <div class="col-12 col-xl-4">
+      <div class="panel-card h-100 mb-0">
+        <div class="panel-header">
+          <div>
+            <h5 class="panel-title"><i class="bi bi-pie-chart-fill text-danger"></i> Stok per Kategori</h5>
+            <div class="small text-muted">Komposisi Food Items, Non Food &amp; Obat</div>
+          </div>
+        </div>
+        <div style="height: 290px;" class="d-flex align-items-center justify-content-center">
+          <canvas id="chartStokKategori"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grafik 3: Nilai Persediaan per Kategori -->
+    <div class="col-12 col-lg-6">
+      <div class="panel-card h-100 mb-0">
+        <div class="panel-header">
+          <div>
+            <h5 class="panel-title"><i class="bi bi-currency-exchange text-success"></i> Grafik Nilai Persediaan per Kategori (Rp)</h5>
+            <div class="small text-muted">Distribusi nilai aset logistik berdasarkan kategori</div>
+          </div>
+        </div>
+        <div style="height: 240px;">
+          <canvas id="chartNilaiPersediaan"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grafik 4: Distribusi Barang Berdasarkan Kategori -->
+    <div class="col-12 col-lg-6">
+      <div class="panel-card h-100 mb-0">
+        <div class="panel-header">
+          <div>
+            <h5 class="panel-title"><i class="bi bi-truck text-primary"></i> Grafik Distribusi Bantuan Berdasarkan Kategori</h5>
+            <div class="small text-muted">Realisasi penyaluran barang keluar per kelompok logistik</div>
+          </div>
+        </div>
+        <div style="height: 240px;">
+          <canvas id="chartDistribusiKategori"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BARIS BAWAH DASHBOARD: AKTIVITAS TERBARU + PERINGATAN STOK KRITIS & EXPIRED -->
+  <div class="row g-4">
+    <!-- Aktivitas Transaksi Terbaru -->
+    <div class="col-12 col-xl-7">
+      <div class="panel-card h-100 mb-0">
+        <div class="panel-header">
+          <h5 class="panel-title"><i class="bi bi-clock-history text-danger"></i> Aktivitas Transaksi Terbaru</h5>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="switchView('transaksi-masuk')">Riwayat Masuk</button>
+            <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="switchView('transaksi-keluar')">Riwayat Keluar</button>
+          </div>
+        </div>
+        <div class="table-modern-wrap">
+          <table class="table-modern">
+            <thead>
+              <tr>
+                <th>No. Dokumen</th>
+                <th>Tanggal</th>
+                <th>Barang</th>
+                <th>Jenis</th>
+                <th class="text-end">Jumlah</th>
+                <th>Sumber / Tujuan</th>
+              </tr>
+            </thead>
+            <tbody id="dashRecentActivityBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daftar Stok Kritis & Mendekati Kedaluwarsa -->
+    <div class="col-12 col-xl-5">
+      <div class="d-flex flex-column gap-4 h-100">
+        <!-- Daftar Stok Kritis -->
+        <div class="panel-card mb-0">
+          <div class="panel-header">
+            <h5 class="panel-title"><i class="bi bi-exclamation-octagon-fill text-warning"></i> Daftar Stok Kritis / Menipis</h5>
+            <a href="javascript:void(0)" class="small fw-bold text-danger text-decoration-none" onclick="openQuickReport('STOK_MINIMUM')">Lihat Semua &rarr;</a>
+          </div>
+          <div class="table-modern-wrap">
+            <table class="table-modern">
+              <thead>
+                <tr>
+                  <th>Barang</th>
+                  <th>Kategori</th>
+                  <th class="text-end">Saldo</th>
+                  <th class="text-end">Min</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="dashCriticalStockBody">
+                <tr><td colspan="5" class="text-center text-muted py-3">Tidak ada stok kritis</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Daftar Barang Mendekati / Sudah Kedaluwarsa -->
+        <div class="panel-card mb-0">
+          <div class="panel-header">
+            <h5 class="panel-title"><i class="bi bi-calendar2-x-fill text-danger"></i> Peringatan Kedaluwarsa (Expired Alert)</h5>
+            <a href="javascript:void(0)" class="small fw-bold text-danger text-decoration-none" onclick="switchView('expired')">Monitoring &rarr;</a>
+          </div>
+          <div class="table-modern-wrap">
+            <table class="table-modern">
+              <thead>
+                <tr>
+                  <th>Barang</th>
+                  <th>Tgl Expired</th>
+                  <th class="text-end">Stok</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="dashNearExpiryBody">
+                <tr><td colspan="4" class="text-center text-muted py-3">Tidak ada barang mendekati kedaluwarsa</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 2: MASTER DATA BARANG (BAB 4)
+     ========================================================================== -->
+<section id="view-master-barang" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Master Data Barang</h1>
+      <p class="page-subtitle">Pengelolaan Katalog Barang Logistik (FOOD ITEMS, NON FOOD, dan OBAT)</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-outline-secondary rounded-pill btn-sm px-3" type="button" onclick="openDonorModal()">
+        <i class="bi bi-building-add"></i> Sumber
+      </button>
+      <button class="btn btn-outline-success rounded-pill btn-sm px-3" type="button" onclick="exportMasterBarangExcel()">
+        <i class="bi bi-file-earmark-excel-fill"></i> Export Excel
+      </button>
+      <button class="btn btn-outline-dark rounded-pill btn-sm px-3" type="button" onclick="printMasterBarangPDF()">
+        <i class="bi bi-printer-fill"></i> Export PDF / Cetak
+      </button>
+      <button id="btnImportMasterTrigger" class="btn-pmi-outline btn-sm" type="button" onclick="switchView('migrasi')">
+        <i class="bi bi-upload"></i> Import Excel
+      </button>
+      <button id="btnAddMasterBarang" class="btn-pmi btn-sm" type="button" onclick="openMasterBarangModal()">
+        <i class="bi bi-plus-circle-fill"></i> Tambah Barang
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter & Pencarian Master Barang -->
+  <div class="panel-card">
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label small fw-bold text-secondary mb-1">CARI NAMA / KODE BARANG / RAK</label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+          <input type="text" id="filterMasterSearch" class="form-control" placeholder="Ketik kode barang, nama barang, sumber..." oninput="renderMasterBarangTable(1)">
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">FILTER KATEGORI</label>
+        <select id="filterMasterKategori" class="form-select" onchange="renderMasterBarangTable(1)">
+          <option value="SEMUA">Semua Kategori (3)</option>
+          <option value="FOOD ITEMS">A. FOOD ITEMS</option>
+          <option value="NON FOOD">B. NON FOOD</option>
+          <option value="OBAT">C. OBAT</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">STATUS AKTIF</label>
+        <select id="filterMasterStatus" class="form-select" onchange="renderMasterBarangTable(1)">
+          <option value="AKTIF">Aktif</option>
+          <option value="SEMUA">Semua Status</option>
+          <option value="NONAKTIF">Nonaktif</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button class="btn btn-light border w-100" type="button" onclick="loadMasterBarangData()" title="Muat Ulang Data">
+          <i class="bi bi-arrow-clockwise"></i> Segarkan
+        </button>
+      </div>
+    </div>
+
+    <div class="table-modern-wrap">
+      <table class="table-modern">
+        <thead>
+          <tr>
+            <th>Kode Barang</th>
+            <th>Nama Barang</th>
+            <th>Kategori &amp; Sub</th>
+            <th>Satuan</th>
+            <th class="text-end">Harga/Unit</th>
+            <th>Sumber</th>
+            <th class="text-end">Stok Min</th>
+            <th class="text-end">Masuk</th>
+            <th class="text-end">Keluar</th>
+            <th class="text-end">Saldo Stok</th>
+            <th class="text-end">Total Nilai</th>
+            <th>Lokasi Rak</th>
+            <th>Status</th>
+            <th class="text-center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="masterBarangTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Pagination Master Barang -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between mt-3 gap-2">
+      <div class="small text-muted" id="masterBarangPageInfo">Menampilkan 0 data</div>
+      <div class="btn-group btn-group-sm" id="masterBarangPagination"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 3: TRANSAKSI BARANG MASUK / GRN (BAB 5)
+     ========================================================================== -->
+<section id="view-transaksi-masuk" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Transaksi Barang Masuk (GRN)</h1>
+      <p class="page-subtitle">Pencatatan Penerimaan Logistik, Bantuan &amp; Pengadaan Gudang (Goods Received Note)</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button id="btnAddTrxMasuk" class="btn-pmi" type="button" onclick="openTransaksiMasukModal()">
+        <i class="bi bi-plus-circle-fill"></i> Input Barang Masuk
+      </button>
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-12 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">CARI NO. TRANSAKSI / GRN / BARANG</label>
+        <input type="text" id="filterInSearch" class="form-control" placeholder="BM-2026..., No GRN, Nama barang..." oninput="renderTransaksiMasukTable(1)">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">KATEGORI</label>
+        <select id="filterInKategori" class="form-select" onchange="renderTransaksiMasukTable(1)">
+          <option value="SEMUA">Semua Kategori</option>
+          <option value="FOOD ITEMS">FOOD ITEMS</option>
+          <option value="NON FOOD">NON FOOD</option>
+          <option value="OBAT">OBAT</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">DARI TANGGAL</label>
+        <input type="date" id="filterInStartDate" class="form-control" onchange="loadTransaksiMasukData()">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">SAMPAI TANGGAL</label>
+        <input type="date" id="filterInEndDate" class="form-control" onchange="loadTransaksiMasukData()">
+      </div>
+      <div class="col-6 col-md-3 d-flex gap-2">
+        <button class="btn btn-dark w-100" type="button" onclick="loadTransaksiMasukData()">
+          <i class="bi bi-funnel"></i> Terapkan
+        </button>
+        <button class="btn btn-outline-secondary" type="button" onclick="resetFilterTransaksiMasuk()">Reset</button>
+      </div>
+    </div>
+
+    <div class="table-modern-wrap">
+      <table class="table-modern">
+        <thead>
+          <tr>
+            <th>No. Transaksi</th>
+            <th>Tanggal</th>
+            <th>No. GRN / Request</th>
+            <th>Kode &amp; Nama Barang</th>
+            <th>Kategori</th>
+            <th class="text-end">Jumlah Masuk</th>
+            <th class="text-end">Harga Unit</th>
+            <th class="text-end">Total Nilai</th>
+            <th>Sumber</th>
+            <th>Expired Date</th>
+            <th>Lampiran</th>
+            <th class="text-center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="transaksiMasukTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center justify-content-between mt-3 gap-2">
+      <div class="small text-muted" id="trxMasukPageInfo">Menampilkan 0 transaksi</div>
+      <div class="btn-group btn-group-sm" id="trxMasukPagination"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 4: TRANSAKSI BARANG KELUAR / GDN (BAB 6)
+     ========================================================================== -->
+<section id="view-transaksi-keluar" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Transaksi Barang Keluar &amp; Distribusi (GDN)</h1>
+      <p class="page-subtitle">Pencatatan Pengeluaran Logistik &amp; Distribusi Bantuan (Goods Delivery Note)</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button id="btnAddTrxKeluar" class="btn-pmi" type="button" onclick="openTransaksiKeluarModal()">
+        <i class="bi bi-plus-circle-fill"></i> Input Barang Keluar
+      </button>
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-12 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">CARI NO. TRANSAKSI / GDN / TUJUAN</label>
+        <input type="text" id="filterOutSearch" class="form-control" placeholder="BK-2026..., Tujuan, Penerima..." oninput="renderTransaksiKeluarTable(1)">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">KATEGORI</label>
+        <select id="filterOutKategori" class="form-select" onchange="renderTransaksiKeluarTable(1)">
+          <option value="SEMUA">Semua Kategori</option>
+          <option value="FOOD ITEMS">FOOD ITEMS</option>
+          <option value="NON FOOD">NON FOOD</option>
+          <option value="OBAT">OBAT</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">DARI TANGGAL</label>
+        <input type="date" id="filterOutStartDate" class="form-control" onchange="loadTransaksiKeluarData()">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">SAMPAI TANGGAL</label>
+        <input type="date" id="filterOutEndDate" class="form-control" onchange="loadTransaksiKeluarData()">
+      </div>
+      <div class="col-6 col-md-3 d-flex gap-2">
+        <button class="btn btn-dark w-100" type="button" onclick="loadTransaksiKeluarData()">
+          <i class="bi bi-funnel"></i> Terapkan
+        </button>
+        <button class="btn btn-outline-secondary" type="button" onclick="resetFilterTransaksiKeluar()">Reset</button>
+      </div>
+    </div>
+
+    <div class="table-modern-wrap">
+      <table class="table-modern">
+        <thead>
+          <tr>
+            <th>No. Transaksi</th>
+            <th>Tanggal</th>
+            <th>No. GDN / Request</th>
+            <th>Kode &amp; Nama Barang</th>
+            <th>Kategori</th>
+            <th class="text-end">Jumlah Keluar</th>
+            <th class="text-end">Total Nilai</th>
+            <th>Tujuan Distribusi</th>
+            <th>Nama Penerima</th>
+            <th>Penanggung Jawab</th>
+            <th>Lampiran</th>
+            <th class="text-center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="transaksiKeluarTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center justify-content-between mt-3 gap-2">
+      <div class="small text-muted" id="trxKeluarPageInfo">Menampilkan 0 transaksi</div>
+      <div class="btn-group btn-group-sm" id="trxKeluarPagination"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 5: KARTU STOK / STOCK CARD (BAB 7)
+     ========================================================================== -->
+<section id="view-kartu-stok" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Kartu Stok Barang (Stock Card)</h1>
+      <p class="page-subtitle">Rincian Mutasi Kronologis: Saldo Akhir = Saldo Sebelumnya + Barang Masuk - Barang Keluar</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-success rounded-pill btn-sm px-3" type="button" onclick="exportKartuStokExcel()">
+        <i class="bi bi-file-earmark-excel-fill"></i> Export Excel
+      </button>
+      <button class="btn-pmi btn-sm" type="button" onclick="printKartuStokDocument()">
+        <i class="bi bi-printer-fill"></i> Cetak Kartu Stok
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter Pilihan Barang & Periode Kartu Stok -->
+  <div class="panel-card">
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-md-5">
+        <label class="form-label small fw-bold text-secondary mb-1">PILIH BARANG</label>
+        <select id="stockCardItemSelect" class="form-select" onchange="loadKartuStokData()">
+          <option value="">-- Pilih Barang untuk Menampilkan Kartu Stok --</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">DARI TANGGAL</label>
+        <input type="date" id="stockCardStartDate" class="form-control">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">SAMPAI TANGGAL</label>
+        <input type="date" id="stockCardEndDate" class="form-control">
+      </div>
+      <div class="col-12 col-md-3 d-flex gap-2">
+        <button class="btn btn-dark w-100" type="button" onclick="loadKartuStokData()">
+          <i class="bi bi-search"></i> Tampilkan Kartu Stok
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Identitas Barang & Ringkasan Saldo Kartu Stok -->
+  <div id="stockCardContentBox" class="panel-card">
+    <div class="row g-3 mb-4 p-3 rounded-4 bg-light border">
+      <div class="col-6 col-md-3">
+        <div class="small text-muted">Kode &amp; Nama Barang</div>
+        <div class="fw-bolder text-dark" id="scHeaderNama">-</div>
+        <div class="small text-danger fw-bold" id="scHeaderKode">-</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="small text-muted">Kategori / Satuan</div>
+        <div class="fw-bold" id="scHeaderKategori">-</div>
+        <div class="small text-secondary" id="scHeaderSatuan">-</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="small text-muted">Harga Satuan / Rak</div>
+        <div class="fw-bold" id="scHeaderHarga">Rp 0</div>
+        <div class="small text-secondary" id="scHeaderRak">-</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="small text-muted">Total Masuk / Keluar</div>
+        <div class="fw-bold text-success" id="scHeaderMutasi">+0 / -0</div>
+        <div class="small text-secondary" id="scHeaderPeriode">Semua Periode</div>
+      </div>
+      <div class="col-12 col-md-3 text-md-end">
+        <div class="small text-muted">Saldo Akhir &amp; Nilai Persediaan</div>
+        <div class="fs-4 fw-bolder text-danger" id="scHeaderSaldoAkhir">0 Unit</div>
+        <div class="small fw-bold text-dark" id="scHeaderNilaiAkhir">Rp 0</div>
+      </div>
+    </div>
+
+    <div class="table-modern-wrap">
+      <table class="table-modern">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Tanggal Transaksi</th>
+            <th>Nomor Dokumen</th>
+            <th>Keterangan Transaksi</th>
+            <th class="text-end">Barang Masuk</th>
+            <th class="text-end">Barang Keluar</th>
+            <th class="text-end">Saldo Stok</th>
+            <th class="text-end">Harga Satuan</th>
+            <th class="text-end">Nilai Persediaan</th>
+            <th>Sumber Barang</th>
+            <th>Tujuan Distribusi</th>
+          </tr>
+        </thead>
+        <tbody id="kartuStokTableBody">
+          <tr><td colspan="11" class="text-center text-muted py-4">Silakan pilih barang di atas untuk melihat rincian Kartu Stok.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 6: STOCK OPNAME (BAB 8)
+     ========================================================================== -->
+<section id="view-stock-opname" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Stock Opname (Pemeriksaan Fisik)</h1>
+      <p class="page-subtitle">Pemeriksaan Fisik Gudang, Perhitungan Selisih &amp; Persetujuan Penyesuaian Stok oleh Administrator</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-outline-dark rounded-pill btn-sm px-3" type="button" onclick="printBeritaAcaraOpname()">
+        <i class="bi bi-printer-fill"></i> Cetak Berita Acara Opname
+      </button>
+      <button id="btnCreateStockOpname" class="btn-pmi btn-sm" type="button" onclick="openStockOpnameWorksheetModal()">
+        <i class="bi bi-clipboard2-plus-fill"></i> Buat Jadwal / Input Stock Opname
+      </button>
+    </div>
+  </div>
+
+  <div class="alert alert-warning d-flex align-items-center gap-3 rounded-4 border-warning mb-4">
+    <i class="bi bi-shield-exclamation fs-4 text-warning-emphasis"></i>
+    <div class="small">
+      <strong>Kebijakan Kontrol Internal Gudang PMI:</strong> Hasil input Stock Opname disimpan dengan status <strong>PENDING (Menunggu Persetujuan)</strong>.
+      Saldo stok sistem <u>tidak akan berubah</u> sebelum hasil penyesuaian disetujui (<strong>APPROVED</strong>) oleh Administrator berwenang.
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label small fw-bold text-secondary mb-1">CARI NO. OPNAME / BARANG / PETUGAS</label>
+        <input type="text" id="filterOpnameSearch" class="form-control" placeholder="SO-2026..., Nama barang, Petugas..." oninput="renderStockOpnameTable()">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">KATEGORI BARANG</label>
+        <select id="filterOpnameKategori" class="form-select" onchange="loadStockOpnameData()">
+          <option value="SEMUA">Semua Kategori</option>
+          <option value="FOOD ITEMS">FOOD ITEMS</option>
+          <option value="NON FOOD">NON FOOD</option>
+          <option value="OBAT">OBAT</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">STATUS PERSETUJUAN</label>
+        <select id="filterOpnameStatus" class="form-select" onchange="loadStockOpnameData()">
+          <option value="SEMUA">Semua Status</option>
+          <option value="PENDING">PENDING (Menunggu Persetujuan)</option>
+          <option value="APPROVED">APPROVED (Disetujui)</option>
+          <option value="REJECTED">REJECTED (Ditolak)</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-2">
+        <button class="btn btn-dark w-100" type="button" onclick="loadStockOpnameData()">
+          <i class="bi bi-arrow-clockwise"></i> Segarkan
+        </button>
+      </div>
+    </div>
+
+    <div class="table-modern-wrap">
+      <table class="table-modern">
+        <thead>
+          <tr>
+            <th>No. Opname</th>
+            <th>Tgl Jadwal / Periksa</th>
+            <th>Kode &amp; Nama Barang</th>
+            <th>Kategori</th>
+            <th class="text-end">Stok Sistem</th>
+            <th class="text-end">Stok Fisik</th>
+            <th class="text-end">Selisih</th>
+            <th class="text-end">Nilai Selisih</th>
+            <th>Alasan Selisih</th>
+            <th>Petugas Pemeriksa</th>
+            <th>Status</th>
+            <th class="text-center">Persetujuan / Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="stockOpnameTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 7: MONITORING EXPIRED DATE (BAB 9)
+     ========================================================================== -->
+<section id="view-expired" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Monitoring Kedaluwarsa Barang (Expired Date)</h1>
+      <p class="page-subtitle">Pemantauan Otomatis Masa Simpan Pangan (Food Items) &amp; Obat-obatan Berdasarkan Tanggal Aktual</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-success rounded-pill btn-sm px-3" type="button" onclick="exportExpiredReportExcel()">
+        <i class="bi bi-file-earmark-excel-fill"></i> Export Excel
+      </button>
+      <button class="btn-pmi btn-sm" type="button" onclick="openQuickReport('BARANG_KEDALUWARSA')">
+        <i class="bi bi-printer-fill"></i> Cetak Laporan Kedaluwarsa
+      </button>
+    </div>
+  </div>
+
+  <!-- 4 Kartu Status Kedaluwarsa Otomatis -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card kpi-danger" style="cursor: pointer;" onclick="setExpiredStatusFilter('KEDALUWARSA')">
+        <div>
+          <div class="kpi-label">KEDALUWARSA (&le; 0 Hari)</div>
+          <div class="kpi-value text-danger" id="expCountKedaluwarsa">0</div>
+          <div class="kpi-sub">Melewati tanggal expired</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-x-octagon-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card kpi-orange" style="cursor: pointer;" onclick="setExpiredStatusFilter('SEGERA KEDALUWARSA')">
+        <div>
+          <div class="kpi-label">SEGERA KEDALUWARSA</div>
+          <div class="kpi-value" style="color: var(--pmi-orange);" id="expCountSegera">0</div>
+          <div class="kpi-sub">Sisa 1 &ndash; 30 hari</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-alarm-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card kpi-warning" style="cursor: pointer;" onclick="setExpiredStatusFilter('PERHATIAN')">
+        <div>
+          <div class="kpi-label">PERHATIAN</div>
+          <div class="kpi-value text-warning-emphasis" id="expCountPerhatian">0</div>
+          <div class="kpi-sub">Sisa 31 &ndash; 90 hari</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-exclamation-circle-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card kpi-success" style="cursor: pointer;" onclick="setExpiredStatusFilter('AMAN')">
+        <div>
+          <div class="kpi-label">AMAN (&gt; 90 Hari)</div>
+          <div class="kpi-value text-success" id="expCountAman">0</div>
+          <div class="kpi-sub">Lebih dari 90 hari</div>
+        </div>
+        <div class="kpi-icon-box"><i class="bi bi-shield-check"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-12 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">CARI BARANG / NO. DOKUMEN</label>
+        <input type="text" id="filterExpSearch" class="form-control" placeholder="Nama barang, kode, GRN..." oninput="loadExpiredMonitoringData()">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">KATEGORI</label>
+        <select id="filterExpKategori" class="form-select" onchange="loadExpiredMonitoringData()">
+          <option value="SEMUA">Semua Kategori</option>
+          <option value="FOOD ITEMS">FOOD ITEMS</option>
+          <option value="OBAT">OBAT</option>
+          <option value="NON FOOD">NON FOOD</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-bold text-secondary mb-1">STATUS KEDALUWARSA</label>
+        <select id="filterExpStatus" class="form-select" onchange="loadExpiredMonitoringData()">
+          <option value="SEMUA">Semua Status</option>
+          <option value="KEDALUWARSA">Kedaluwarsa (&le; 0 Hari)</option>
+          <option value="SEGERA KEDALUWARSA">Segera Kedaluwarsa (1-30 Hari)</option>
+          <option value="PERHATIAN">Perhatian (31-90 Hari)</option>
+          <option value="AMAN">Aman (&gt; 90 Hari)</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">EXPIRED DARI</label>
+        <input type="date" id="filterExpStartDate" class="form-control" onchange="loadExpiredMonitoringData()">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">EXPIRED SAMPAI</label>
+        <input type="date" id="filterExpEndDate" class="form-control" onchange="loadExpiredMonitoringData()">
+      </div>
+    </div>
+
+    <div class="table-modern-wrap">
+      <table class="table-modern">
+        <thead>
+          <tr>
+            <th>Kode Barang</th>
+            <th>Nama Barang</th>
+            <th>Kategori</th>
+            <th>No. Dokumen / GRN</th>
+            <th>Sumber</th>
+            <th class="text-end">Saldo Stok</th>
+            <th>Lokasi Rak</th>
+            <th>Tanggal Kedaluwarsa</th>
+            <th class="text-center">Sisa Hari</th>
+            <th>Status Otomatis</th>
+          </tr>
+        </thead>
+        <tbody id="expiredMonitoringTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 8: PUSAT LAPORAN - 12 JENIS LAPORAN RESMI (BAB 10)
+     ========================================================================== -->
+<section id="view-laporan" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Pusat Laporan Resmi Gudang PMI</h1>
+      <p class="page-subtitle">12 Format Laporan Standar Logistik &amp; Persediaan PMI Kota Surakarta (Export Excel, PDF &amp; Cetak Langsung)</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-success rounded-pill btn-sm px-3" type="button" onclick="exportActiveReportToExcel()">
+        <i class="bi bi-file-earmark-excel-fill me-1"></i> Export Excel (.xlsx)
+      </button>
+      <button class="btn btn-dark rounded-pill btn-sm px-3" type="button" onclick="printActiveReportDocument()">
+        <i class="bi bi-file-earmark-pdf-fill me-1"></i> Export PDF / Print Langsung
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter Parameter Laporan -->
+  <div class="panel-card">
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label small fw-bold text-danger mb-1">PILIH JENIS LAPORAN (1 - 12)</label>
+        <select id="reportTypeSelect" class="form-select fw-bold" onchange="generateSelectedReport()">
+          <option value="STOK_KESELURUHAN">1. Laporan Stok Keseluruhan</option>
+          <option value="STOK_FOOD">2. Laporan Stok Food Items</option>
+          <option value="STOK_NON_FOOD">3. Laporan Stok Non Food</option>
+          <option value="STOK_OBAT">4. Laporan Stok Obat</option>
+          <option value="BARANG_MASUK">5. Laporan Barang Masuk (GRN)</option>
+          <option value="BARANG_KELUAR">6. Laporan Barang Keluar (GDN)</option>
+          <option value="DISTRIBUSI_BANTUAN">7. Laporan Distribusi Bantuan</option>
+          <option value="NILAI_PERSEDIAAN">8. Laporan Nilai Persediaan</option>
+          <option value="STOK_MINIMUM">9. Laporan Stok Minimum / Kritis</option>
+          <option value="BARANG_KEDALUWARSA">10. Laporan Barang Kedaluwarsa</option>
+          <option value="STOCK_OPNAME">11. Laporan Stock Opname</option>
+          <option value="SUMBER_DONOR">12. Laporan Sumber Barang</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">DARI TANGGAL</label>
+        <input type="date" id="reportStartDate" class="form-control">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">SAMPAI TANGGAL</label>
+        <input type="date" id="reportEndDate" class="form-control">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">FILTER KATEGORI</label>
+        <select id="reportKategoriSelect" class="form-select">
+          <option value="SEMUA">Semua Kategori</option>
+          <option value="FOOD ITEMS">FOOD ITEMS</option>
+          <option value="NON FOOD">NON FOOD</option>
+          <option value="OBAT">OBAT</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold text-secondary mb-1">SUMBER</label>
+        <input type="text" id="reportDonorInput" class="form-control" placeholder="Semua sumber...">
+      </div>
+      <div class="col-12 col-md-8">
+        <label class="form-label small fw-bold text-secondary mb-1">FILTER NAMA / KODE BARANG</label>
+        <input type="text" id="reportBarangInput" class="form-control" placeholder="Ketik nama atau kode barang tertentu (kosongkan untuk menampilkan semua)...">
+      </div>
+      <div class="col-12 col-md-4 d-flex gap-2">
+        <button class="btn-pmi w-100 justify-content-center" type="button" onclick="generateSelectedReport()">
+          <i class="bi bi-play-circle-fill"></i> Tampilkan Laporan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Dokumen Laporan Resmi dengan Kop PMI Kota Surakarta -->
+  <div class="panel-card" id="reportPreviewContainer">
+    <!-- Kop Surat Laporan -->
+    <div class="border-bottom border-3 border-danger pb-3 mb-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
+      <div class="d-flex align-items-center gap-3">
+        <div class="pmi-cross-logo">
+          <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer">
+        </div>
+        <div>
+          <div class="fw-bolder fs-5 text-danger" id="repMetaInstansi">PALANG MERAH INDONESIA KOTA SURAKARTA</div>
+          <div class="small fw-bold text-dark">GUDANG LOGISTIK &amp; PENANGGULANGAN BENCANA (PB)</div>
+          <div class="small text-muted" id="repMetaAlamat">Jl. Kolonel Sutarto No. 58, Jebres, Kota Surakarta, Jawa Tengah 57126</div>
+        </div>
+      </div>
+      <div class="text-md-end small">
+        <div class="fw-bolder text-dark" id="repMetaTitle">LAPORAN PERSEDIAAN STOK GUDANG</div>
+        <div class="text-muted">Periode: <strong id="repMetaPeriode">Semua Periode</strong></div>
+        <div class="text-muted">Tanggal Cetak: <span id="repMetaTglCetak">-</span></div>
+      </div>
+    </div>
+
+    <!-- Ringkasan Laporan -->
+    <div id="reportSummaryPills" class="d-flex flex-wrap gap-3 mb-3"></div>
+
+    <!-- Tabel Data Laporan -->
+    <div class="table-modern-wrap mb-4">
+      <table class="table-modern" id="reportMainTable">
+        <thead id="reportTableHead"></thead>
+        <tbody id="reportTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Kolom Tanda Tangan Petugas & Penanggung Jawab -->
+    <div class="row mt-4 pt-3 text-center small">
+      <div class="col-6">
+        <div class="text-muted">Disiapkan Oleh,</div>
+        <div class="fw-bold mb-5">Petugas Operasional Gudang</div>
+        <div class="fw-bold text-decoration-underline" id="repSignPetugas">Petugas Gudang</div>
+      </div>
+      <div class="col-6">
+        <div class="text-muted">Mengetahui &amp; Menyetujui,</div>
+        <div class="fw-bold mb-5">Penanggung Jawab / Kepala Markas</div>
+        <div class="fw-bold text-decoration-underline" id="repSignPimpinan">Kepala Markas PMI Kota Surakarta</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 9: MIGRASI DATA DARI EXCEL - Stock Report Gudang PB.xlsx (BAB 16)
+     ========================================================================== -->
+<section id="view-migrasi" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Migrasi &amp; Import Data Excel</h1>
+      <p class="page-subtitle">Import Terstruktur dari File Referensi <strong>Stock Report Gudang PB.xlsx</strong> (Food Items, Non Food, Obat)</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-danger rounded-pill btn-sm px-3" type="button" onclick="downloadSampleExcelTemplate()">
+        <i class="bi bi-file-earmark-arrow-down-fill"></i> Unduh Contoh Stock Report Gudang PB.xlsx
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-xl-5">
+      <div class="panel-card h-100 mb-0">
+        <h5 class="panel-title mb-3"><i class="bi bi-file-earmark-spreadsheet text-success"></i> 1. Pilih File Excel Sumber</h5>
+        <p class="small text-muted">
+          Unggah file <strong>Stock Report Gudang PB.xlsx</strong>. Sistem secara otomatis mendeteksi sheet
+          <strong>Food Items</strong>, <strong>Non Food</strong>, dan <strong>Obat</strong>, melakukan pemetaan kolom,
+           serta membedakan baris Master Barang dan baris Transaksi tanpa mengubah file Excel sumber.
+        </p>
+
+        <div class="mb-3">
+          <label class="form-label small fw-bold text-secondary">FILE EXCEL (.XLSX / .XLS / .CSV)</label>
+          <input type="file" id="excelFileInput" class="form-control" accept=".xlsx,.xls,.csv" onchange="handleExcelFileSelected(event)">
+        </div>
+
+        <div id="excelSheetsCheckContainer" class="mb-3 d-none">
+          <label class="form-label small fw-bold text-secondary">SHEET YANG TERDETEKSI &amp; PEMETAAN KATEGORI:</label>
+          <div id="excelSheetListGroup" class="list-group small"></div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+          <button id="btnParsePreviewExcel" class="btn btn-dark w-100" type="button" onclick="parseAndPreviewExcelFile()" disabled>
+            <i class="bi bi-eye-fill me-1"></i> Tampilkan Preview &amp; Validasi
+          </button>
+          <button id="btnExecuteImportExcel" class="btn-pmi w-100 justify-content-center" type="button" onclick="executeConfirmedExcelImport()" disabled>
+            <i class="bi bi-cloud-upload-fill me-1"></i> Jalankan Import ke Database
+          </button>
+        </div>
+
+        <!-- Hasil Laporan Import -->
+        <div id="importResultAlertBox" class="mt-4 d-none"></div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+      <div class="panel-card h-100 mb-0">
+        <div class="panel-header">
+          <h5 class="panel-title"><i class="bi bi-table text-danger"></i> 2. Preview &amp; Validasi Data Sebelum Import</h5>
+          <span class="badge bg-secondary" id="excelPreviewCountBadge">0 Baris Terbaca</span>
+        </div>
+
+        <div class="table-modern-wrap" style="max-height: 430px; overflow-y: auto;">
+          <table class="table-modern">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Kategori</th>
+                <th>Kode</th>
+                <th>Nama Barang</th>
+                <th>Satuan</th>
+                <th class="text-end">Harga</th>
+                <th>Sumber</th>
+                <th class="text-end">Awal</th>
+                <th class="text-end">Masuk</th>
+                <th class="text-end">Keluar</th>
+                <th>Expired</th>
+                <th>Tipe Baris</th>
+              </tr>
+            </thead>
+            <tbody id="excelPreviewTableBody">
+              <tr><td colspan="12" class="text-center text-muted py-5">Silakan pilih file Excel di sebelah kiri untuk melihat preview pemetaan data.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     VIEW 10: MANAJEMEN PENGGUNA, PENGATURAN, BACKUP & LOG AKTIVITAS (BAB 11 & 14)
+     ========================================================================== -->
+<section id="view-pengaturan" class="view-section">
+  <div class="page-header-bar">
+    <div>
+      <h1 class="page-title">Manajemen Pengguna, Keamanan &amp; Sistem</h1>
+      <p class="page-subtitle">Pengaturan Hak Akses (ADMIN, PETUGAS GUDANG, PIMPINAN), Kop Laporan, Backup Database &amp; Audit Log</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-outline-dark rounded-pill btn-sm px-3" type="button" onclick="triggerManualBackup()">
+        <i class="bi bi-cloud-arrow-up-fill"></i> Backup Database ke Drive
+      </button>
+      <button class="btn-pmi btn-sm" type="button" onclick="openUserModal()">
+        <i class="bi bi-person-plus-fill"></i> Tambah Pengguna
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Daftar Pengguna & Level Akses -->
+    <div class="col-12 col-xl-7">
+      <div class="panel-card">
+        <div class="panel-header">
+          <h5 class="panel-title"><i class="bi bi-people-fill text-danger"></i> Daftar Akun Pengguna</h5>
+          <button class="btn btn-sm btn-light border" onclick="loadUsersAndSettingsData()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <div class="table-modern-wrap">
+          <table class="table-modern">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Nama Lengkap</th>
+                <th>Level Akses (Role)</th>
+                <th>Jabatan</th>
+                <th>Status</th>
+                <th>Login Terakhir</th>
+                <th class="text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pengaturan Instansi & Pejabat Penandatangan -->
+    <div class="col-12 col-xl-5">
+      <div class="panel-card">
+        <h5 class="panel-title mb-3"><i class="bi bi-gear-fill text-danger"></i> Identitas Instansi &amp; Pejabat Laporan</h5>
+        <form id="settingsForm" onsubmit="handleSaveSettings(event)">
+          <div class="mb-2">
+            <label class="form-label small fw-bold text-secondary mb-1">NAMA INSTANSI</label>
+            <input type="text" id="setNamaInstansi" class="form-control form-control-sm" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold text-secondary mb-1">ALAMAT MARKAS / GUDANG</label>
+            <input type="text" id="setAlamatInstansi" class="form-control form-control-sm" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold text-secondary mb-1">TELEPON &amp; EMAIL RESMI</label>
+            <input type="text" id="setTeleponInstansi" class="form-control form-control-sm">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-secondary mb-1">NAMA KEPALA MARKAS</label>
+              <input type="text" id="setNamaKepalaMarkas" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-secondary mb-1">KOORDINATOR GUDANG PB</label>
+              <input type="text" id="setNamaKoordinatorGudang" class="form-control form-control-sm">
+            </div>
+          </div>
+          <button type="submit" class="btn-pmi btn-sm w-100 justify-content-center">
+            <i class="bi bi-check2-circle"></i> Simpan Pengaturan Instansi
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Log Aktivitas Sistem -->
+    <div class="col-12">
+      <div class="panel-card mb-0">
+        <div class="panel-header">
+          <h5 class="panel-title"><i class="bi bi-journal-code text-danger"></i> Log Aktivitas Pengguna (Audit Trail)</h5>
+          <span class="small text-muted">Mencatat seluruh aktivitas login, perubahan master, transaksi &amp; persetujuan opname</span>
+        </div>
+        <div class="table-modern-wrap" style="max-height: 360px; overflow-y: auto;">
+          <table class="table-modern">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Pengguna</th>
+                <th>Role</th>
+                <th>Modul</th>
+                <th>Aksi</th>
+                <th>Referensi</th>
+                <th>Detail Aktivitas</th>
+              </tr>
+            </thead>
+            <tbody id="activityLogTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================================
+     MODAL-MODAL FORM INTERAKTIF
+     ========================================================================== -->
+
+<!-- 1. MODAL TAMBAH / EDIT MASTER BARANG -->
+<div class="modal fade" id="modalMasterBarang" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header bg-danger text-white rounded-top-4">
+        <h5 class="modal-title fw-bold" id="modalMasterBarangTitle"><i class="bi bi-box-seam me-2"></i>Tambah Master Barang</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="formMasterBarang" onsubmit="handleSaveMasterBarang(event)">
+        <div class="modal-body p-4">
+          <input type="hidden" id="mbIdBarang">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">KATEGORI UTAMA <span class="text-danger">*</span></label>
+              <select id="mbKategori" class="form-select" required onchange="handleMasterCategoryChange()">
+                <option value="FOOD ITEMS">A. FOOD ITEMS</option>
+                <option value="NON FOOD">B. NON FOOD</option>
+                <option value="OBAT">C. OBAT</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">KODE BARANG (UNIK)</label>
+              <input type="text" id="mbKodeBarang" class="form-control" placeholder="Otomatis jika dikosongkan (mis: FD-0006)">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">SUBKATEGORI</label>
+              <input type="text" id="mbSubkategori" class="form-control" placeholder="Contoh: Makanan Pokok / Paket Kit / P3K">
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label small fw-bold">NAMA BARANG <span class="text-danger">*</span></label>
+              <input type="text" id="mbNamaBarang" class="form-control" placeholder="Masukkan nama lengkap barang & spesifikasi" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">SATUAN <span class="text-danger">*</span></label>
+              <input type="text" id="mbSatuan" class="form-control" placeholder="Sak / Dus / Box / Pcs / Botol" required>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">HARGA PER UNIT (RP)</label>
+              <input type="number" id="mbHargaUnit" class="form-control" min="0" step="any" value="0" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">SUMBER</label>
+              <input type="text" id="mbSumberDonor" class="form-control" list="donorDatalist" placeholder="Pilih atau ketik sumber">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">STOK MINIMUM (ALERT)</label>
+              <input type="number" id="mbStokMinimum" class="form-control" min="0" value="10" required>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">LOKASI PENYIMPANAN / RAK</label>
+              <input type="text" id="mbLokasiRak" class="form-control" placeholder="Contoh: RAK-A1 / ZONA-B">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">MEMILIKI EXPIRED DATE?</label>
+              <select id="mbHasExpiry" class="form-select">
+                <option value="YA">YA (Pantau Kedaluwarsa)</option>
+                <option value="TIDAK">TIDAK (Barang Non-Expired)</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">STATUS AKTIF</label>
+              <select id="mbStatusAktif" class="form-select">
+                <option value="AKTIF">AKTIF</option>
+                <option value="NONAKTIF">NONAKTIF</option>
+              </select>
+            </div>
+
+            <!-- Baris Stok Awal khusus saat tambah barang baru -->
+            <div id="mbInitialStockRow" class="col-12">
+              <div class="p-3 rounded-3 bg-light border">
+                <div class="small fw-bold text-danger mb-2"><i class="bi bi-info-circle me-1"></i> Saldo Stok Awal (Opsional saat registrasi barang baru)</div>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">JUMLAH STOK AWAL</label>
+                    <input type="number" id="mbStokAwal" class="form-control" min="0" step="any" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">TANGGAL KEDALUWARSA STOK AWAL (JIKA ADA)</label>
+                    <input type="date" id="mbExpiredAwal" class="form-control">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small fw-bold">KETERANGAN</label>
+              <textarea id="mbKeterangan" class="form-control" rows="2" placeholder="Catatan tambahan spesifikasi atau peruntukan barang..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light rounded-bottom-4">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn-pmi"><i class="bi bi-save"></i> Simpan Master Barang</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Datalist Donor -->
+<datalist id="donorDatalist"></datalist>
+
+<!-- 2. MODAL TRANSAKSI BARANG MASUK (GRN) -->
+<div class="modal fade" id="modalTransaksiMasuk" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header bg-success text-white rounded-top-4">
+        <h5 class="modal-title fw-bold" id="modalTrxMasukTitle"><i class="bi bi-box-arrow-in-down-left me-2"></i>Input Transaksi Barang Masuk (GRN)</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="formTransaksiMasuk" onsubmit="handleSaveTransaksiMasuk(event)">
+        <div class="modal-body p-4">
+          <input type="hidden" id="inIdMasuk">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NOMOR TRANSAKSI (OTOMATIS)</label>
+              <input type="text" id="inNoTransaksi" class="form-control bg-light fw-bold" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">TANGGAL TRANSAKSI <span class="text-danger">*</span></label>
+              <input type="date" id="inTanggal" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">FILTER KATEGORI BARANG</label>
+              <select id="inFilterKategori" class="form-select" onchange="populateTransaksiItemDropdown('in')">
+                <option value="SEMUA">Semua Kategori</option>
+                <option value="FOOD ITEMS">FOOD ITEMS</option>
+                <option value="NON FOOD">NON FOOD</option>
+                <option value="OBAT">OBAT</option>
+              </select>
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label small fw-bold">PILIH NAMA BARANG <span class="text-danger">*</span></label>
+              <select id="inIdBarang" class="form-select" required onchange="handleSelectBarangMasukChange()">
+                <option value="">-- Pilih Barang --</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">KODE BARANG &amp; SATUAN</label>
+              <input type="text" id="inKodeSatuanDisplay" class="form-control bg-light" readonly placeholder="-">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">JUMLAH MASUK <span class="text-danger">*</span></label>
+              <input type="number" id="inJumlahMasuk" class="form-control fw-bold" min="0.01" step="any" required oninput="calculateTotalNilaiMasuk()">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">HARGA PER UNIT (RP)</label>
+              <input type="number" id="inHargaUnit" class="form-control" min="0" step="any" required oninput="calculateTotalNilaiMasuk()">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">TOTAL NILAI (RP)</label>
+              <input type="text" id="inTotalNilaiDisplay" class="form-control bg-light fw-bold text-success" readonly value="Rp 0">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">SUMBER <span class="text-danger">*</span></label>
+              <input type="text" id="inSumberDonor" class="form-control" list="donorDatalist" required placeholder="PMI Pusat / IFRC / CSR">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NOMOR DOKUMEN GRN</label>
+              <input type="text" id="inNoGrn" class="form-control" placeholder="Contoh: GRN/PMI-SKA/2026/01">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NOMOR PERMINTAAN / REQUEST</label>
+              <input type="text" id="inNoRequest" class="form-control" placeholder="Opsional">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">TANGGAL KEDALUWARSA (JIKA RELEVAN)</label>
+              <input type="date" id="inExpiredDate" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">UPLOAD DOKUMEN PENDUKUNG (GRN / BAST)</label>
+              <input type="file" id="inDokumenFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small fw-bold">CATATAN PENERIMAAN</label>
+              <textarea id="inCatatan" class="form-control" rows="2" placeholder="Kondisi barang saat diterima, nomor batch obat, atau keterangan lainnya..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light rounded-bottom-4">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-success rounded-pill px-4 fw-bold"><i class="bi bi-check2-circle me-1"></i> Simpan Barang Masuk</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 3. MODAL TRANSAKSI BARANG KELUAR (GDN) -->
+<div class="modal fade" id="modalTransaksiKeluar" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header bg-danger text-white rounded-top-4">
+        <h5 class="modal-title fw-bold" id="modalTrxKeluarTitle"><i class="bi bi-box-arrow-up-right me-2"></i>Input Transaksi Barang Keluar (GDN)</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="formTransaksiKeluar" onsubmit="handleSaveTransaksiKeluar(event)">
+        <div class="modal-body p-4">
+          <input type="hidden" id="outIdKeluar">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NOMOR TRANSAKSI (OTOMATIS)</label>
+              <input type="text" id="outNoTransaksi" class="form-control bg-light fw-bold" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">TANGGAL TRANSAKSI <span class="text-danger">*</span></label>
+              <input type="date" id="outTanggal" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">FILTER KATEGORI BARANG</label>
+              <select id="outFilterKategori" class="form-select" onchange="populateTransaksiItemDropdown('out')">
+                <option value="SEMUA">Semua Kategori</option>
+                <option value="FOOD ITEMS">FOOD ITEMS</option>
+                <option value="NON FOOD">NON FOOD</option>
+                <option value="OBAT">OBAT</option>
+              </select>
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label small fw-bold">PILIH NAMA BARANG <span class="text-danger">*</span></label>
+              <select id="outIdBarang" class="form-select" required onchange="handleSelectBarangKeluarChange()">
+                <option value="">-- Pilih Barang --</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">STOK TERSEDIA SAAT INI</label>
+              <input type="text" id="outStokTersediaDisplay" class="form-control bg-light fw-bolder text-danger" readonly value="0 Unit">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">JUMLAH KELUAR <span class="text-danger">*</span></label>
+              <input type="number" id="outJumlahKeluar" class="form-control fw-bold" min="0.01" step="any" required oninput="validateOutQtyAgainstStock()">
+              <div id="outStockWarningText" class="form-text text-danger fw-bold d-none">Jumlah melebihi stok tersedia!</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">TUJUAN DISTRIBUSI / LOKASI <span class="text-danger">*</span></label>
+              <input type="text" id="outTujuanDistribusi" class="form-control" required placeholder="Contoh: Posko Banjir Kec. Jebres">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NAMA PENERIMA <span class="text-danger">*</span></label>
+              <input type="text" id="outNamaPenerima" class="form-control" required placeholder="Nama koordinator / penerima">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NOMOR DOKUMEN GDN</label>
+              <input type="text" id="outNoGdn" class="form-control" placeholder="Contoh: GDN/PMI-SKA/2026/01">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">NOMOR PERMINTAAN / REQUEST</label>
+              <input type="text" id="outNoRequest" class="form-control" placeholder="Contoh: REQ-PB-01">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">PENANGGUNG JAWAB <span class="text-danger">*</span></label>
+              <input type="text" id="outPenanggungJawab" class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">UPLOAD DOKUMEN PENDUKUNG (GDN / SURAT JALAN)</label>
+              <input type="file" id="outDokumenFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">CATATAN DISTRIBUSI</label>
+              <input type="text" id="outCatatan" class="form-control" placeholder="Keterangan keperluan distribusi bantuan...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light rounded-bottom-4">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" id="btnSubmitTrxKeluar" class="btn-pmi"><i class="bi bi-send-check-fill me-1"></i> Simpan Barang Keluar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 4. MODAL LEMBAR KERJA STOCK OPNAME -->
+<div class="modal fade" id="modalStockOpname" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header bg-dark text-white rounded-top-4">
+        <h5 class="modal-title fw-bold"><i class="bi bi-clipboard2-check me-2"></i>Jadwal &amp; Lembar Pemeriksaan Fisik (Stock Opname)</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="row g-3 mb-3 p-3 rounded-3 bg-light border">
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">TANGGAL JADWAL OPNAME</label>
+            <input type="date" id="soTanggalJadwal" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">TANGGAL PEMERIKSAAN FISIK</label>
+            <input type="date" id="soTanggalPeriksa" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">PILIH KATEGORI BARANG</label>
+            <select id="soKategoriFilter" class="form-select" onchange="renderOpnameWorksheetRows()">
+              <option value="FOOD ITEMS">A. FOOD ITEMS</option>
+              <option value="NON FOOD">B. NON FOOD</option>
+              <option value="OBAT">C. OBAT</option>
+              <option value="SEMUA">Semua Kategori</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">NAMA PETUGAS PEMERIKSA <span class="text-danger">*</span></label>
+            <input type="text" id="soPetugasPemeriksa" class="form-control" required>
+          </div>
+        </div>
+
+        <div class="small text-muted mb-2">
+          Isi kolom <strong>Jumlah Fisik</strong> pada barang yang diperiksa. Sistem otomatis menghitung selisih terhadap stok sistem.
+        </div>
+
+        <div class="table-modern-wrap">
+          <table class="table-modern">
+            <thead>
+              <tr>
+                <th>Kode Barang</th>
+                <th>Nama Barang</th>
+                <th>Kategori</th>
+                <th>Satuan</th>
+                <th class="text-end">Stok Sistem</th>
+                <th style="width: 140px;">Jumlah Fisik</th>
+                <th class="text-end">Selisih</th>
+                <th>Alasan Selisih / Catatan Pemeriksaan</th>
+              </tr>
+            </thead>
+            <tbody id="opnameWorksheetBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer bg-light rounded-bottom-4">
+        <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn-pmi" onclick="handleSaveStockOpnameWorksheet()">
+          <i class="bi bi-save2-fill"></i> Simpan Hasil Stock Opname (Status: PENDING)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5. MODAL KELOLA SUMBER BARANG -->
+<div class="modal fade" id="modalDonor" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header bg-dark text-white rounded-top-4">
+        <h5 class="modal-title fw-bold"><i class="bi bi-building me-2"></i>Data Sumber Barang</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <form id="formDonor" class="row g-2 mb-4 p-3 bg-light rounded-3 border" onsubmit="handleSaveDonor(event)">
+          <div class="col-md-3">
+            <input type="text" id="dnKodeDonor" class="form-control form-control-sm" placeholder="Kode (mis: PMI-PST)" required>
+          </div>
+          <div class="col-md-4">
+            <input type="text" id="dnNamaDonor" class="form-control form-control-sm" placeholder="Nama Sumber / Instansi" required>
+          </div>
+          <div class="col-md-3">
+            <input type="text" id="dnJenisDonor" class="form-control form-control-sm" placeholder="Jenis (Internal/CSR/Mitra)">
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-danger btn-sm w-100 fw-bold">+ Tambah</button>
+          </div>
+        </form>
+        <div class="table-modern-wrap" style="max-height: 300px; overflow-y: auto;">
+          <table class="table-modern">
+            <thead>
+              <tr>
+                <th>Kode Sumber</th>
+                <th>Nama Sumber</th>
+                <th>Jenis</th>
+                <th>Keterangan</th>
+              </tr>
+            </thead>
+            <tbody id="donorModalTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6. MODAL TAMBAH / EDIT PENGGUNA (KHUSUS ADMIN) -->
+<div class="modal fade" id="modalUserAccount" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header bg-danger text-white rounded-top-4">
+        <h5 class="modal-title fw-bold" id="modalUserTitle"><i class="bi bi-person-badge me-2"></i>Tambah Pengguna</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="formUserAccount" onsubmit="handleSaveUserAccount(event)">
+        <div class="modal-body p-4">
+          <input type="hidden" id="usrIdUser">
+          <div class="mb-3">
+            <label class="form-label small fw-bold">USERNAME <span class="text-danger">*</span></label>
+            <input type="text" id="usrUsername" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">PASSWORD <span class="text-muted fw-normal" id="usrPassHint">(Minimal 6 karakter)</span></label>
+            <input type="password" id="usrPassword" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">NAMA LENGKAP <span class="text-danger">*</span></label>
+            <input type="text" id="usrNamaLengkap" class="form-control" required>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold">LEVEL HAK AKSES (ROLE)</label>
+              <select id="usrRole" class="form-select" required>
+                <option value="ADMIN">ADMIN</option>
+                <option value="PETUGAS GUDANG">PETUGAS GUDANG</option>
+                <option value="PIMPINAN">PIMPINAN</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold">STATUS AKUN</label>
+              <select id="usrStatusAktif" class="form-select">
+                <option value="AKTIF">AKTIF</option>
+                <option value="NONAKTIF">NONAKTIF</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">JABATAN</label>
+            <input type="text" id="usrJabatan" class="form-control" placeholder="Staf Logistik / Kepala Markas">
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small fw-bold">EMAIL</label>
+              <input type="email" id="usrEmail" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold">NO. TELEPON / HP</label>
+              <input type="text" id="usrNoHp" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light rounded-bottom-4">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn-pmi">Simpan Pengguna</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
