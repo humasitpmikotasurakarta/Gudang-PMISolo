@@ -1313,10 +1313,38 @@
             </div>
 
             <div class="col-md-8">
-              <label class="form-label small fw-bold">PILIH NAMA BARANG <span class="text-danger">*</span></label>
-              <select id="inIdBarang" class="form-select" required onchange="handleSelectBarangMasukChange()">
-                <option value="">-- Pilih Barang --</option>
-              </select>
+              <label class="form-label small fw-bold">PILIH NAMA / KODE BARANG <span class="text-danger">*</span></label>
+              <input type="hidden" id="inIdBarang">
+              <div class="pmi-autocomplete-wrap" id="inBarangAutocompleteWrap">
+                <div class="pmi-ac-input-box">
+                  <i class="bi bi-search pmi-ac-search-icon"></i>
+                  <input
+                    type="text"
+                    id="inBarangSearchInput"
+                    class="form-control pmi-ac-input"
+                    placeholder="Ketik untuk cari nama atau kode barang (mis: FD-0001, Beras)..."
+                    autocomplete="off"
+                    onfocus="openBarangAutocomplete('in')"
+                    oninput="handleBarangAutocompleteInput('in')"
+                    onkeydown="handleBarangAutocompleteKeydown(event, 'in')"
+                  >
+                  <div class="pmi-ac-actions">
+                    <button type="button" class="pmi-ac-clear-btn d-none" id="inBarangClearBtn" onclick="clearBarangAutocomplete('in', true)" title="Hapus pilihan barang">
+                      <i class="bi bi-x-circle-fill"></i>
+                    </button>
+                    <button type="button" class="pmi-ac-chevron-btn" onclick="toggleBarangAutocomplete('in')" tabindex="-1" title="Tampilkan daftar barang">
+                      <i class="bi bi-chevron-down"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="pmi-ac-dropdown" id="inBarangAutocompleteDropdown">
+                  <div class="pmi-ac-header">
+                    <span id="inBarangAcCountText">Menampilkan semua barang</span>
+                    <span><i class="bi bi-keyboard me-1"></i>Ketik Nama / Kode</span>
+                  </div>
+                  <div class="pmi-ac-list" id="inBarangAutocompleteList"></div>
+                </div>
+              </div>
             </div>
             <div class="col-md-4">
               <label class="form-label small fw-bold">KODE BARANG &amp; SATUAN</label>
@@ -1404,10 +1432,38 @@
             </div>
 
             <div class="col-md-8">
-              <label class="form-label small fw-bold">PILIH NAMA BARANG <span class="text-danger">*</span></label>
-              <select id="outIdBarang" class="form-select" required onchange="handleSelectBarangKeluarChange()">
-                <option value="">-- Pilih Barang --</option>
-              </select>
+              <label class="form-label small fw-bold">PILIH NAMA / KODE BARANG <span class="text-danger">*</span></label>
+              <input type="hidden" id="outIdBarang">
+              <div class="pmi-autocomplete-wrap" id="outBarangAutocompleteWrap">
+                <div class="pmi-ac-input-box">
+                  <i class="bi bi-search pmi-ac-search-icon"></i>
+                  <input
+                    type="text"
+                    id="outBarangSearchInput"
+                    class="form-control pmi-ac-input"
+                    placeholder="Ketik untuk cari nama atau kode barang (mis: NF-0005, Family Kit)..."
+                    autocomplete="off"
+                    onfocus="openBarangAutocomplete('out')"
+                    oninput="handleBarangAutocompleteInput('out')"
+                    onkeydown="handleBarangAutocompleteKeydown(event, 'out')"
+                  >
+                  <div class="pmi-ac-actions">
+                    <button type="button" class="pmi-ac-clear-btn d-none" id="outBarangClearBtn" onclick="clearBarangAutocomplete('out', true)" title="Hapus pilihan barang">
+                      <i class="bi bi-x-circle-fill"></i>
+                    </button>
+                    <button type="button" class="pmi-ac-chevron-btn" onclick="toggleBarangAutocomplete('out')" tabindex="-1" title="Tampilkan daftar barang">
+                      <i class="bi bi-chevron-down"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="pmi-ac-dropdown" id="outBarangAutocompleteDropdown">
+                  <div class="pmi-ac-header">
+                    <span id="outBarangAcCountText">Menampilkan semua barang</span>
+                    <span><i class="bi bi-keyboard me-1"></i>Ketik Nama / Kode</span>
+                  </div>
+                  <div class="pmi-ac-list" id="outBarangAutocompleteList"></div>
+                </div>
+              </div>
             </div>
             <div class="col-md-4">
               <label class="form-label small fw-bold">STOK TERSEDIA SAAT INI</label>
