@@ -2004,16 +2004,17 @@
   }
 
   function highlightAutocompleteMatch(text, rawQuery) {
-    var safeText = escapeHtml(text || '');
+    var src = String(text || '');
     var q = String(rawQuery || '').trim();
-    if (!q) return safeText;
-    var escapedRegex = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    try {
-      var re = new RegExp('(' + escapedRegex + ')', 'gi');
-      return safeText.replace(re, '<mark class="pmi-ac-highlight">$1</mark>');
-    } catch (e) {
-      return safeText;
-    }
+    if (!q) return escapeHtml(src);
+    var lowerSrc = src.toLowerCase();
+    var lowerQ = q.toLowerCase();
+    var idx = lowerSrc.indexOf(lowerQ);
+    if (idx === -1) return escapeHtml(src);
+    var before = src.substring(0, idx);
+    var match = src.substring(idx, idx + q.length);
+    var after = src.substring(idx + q.length);
+    return escapeHtml(before) + '<mark class="pmi-ac-highlight">' + escapeHtml(match) + '</mark>' + escapeHtml(after);
   }
 
   function getFilteredItemsForAutocomplete(mode, searchQuery) {
