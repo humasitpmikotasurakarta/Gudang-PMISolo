@@ -238,18 +238,48 @@ function generateAutoItemCode(kategori) {
 }
 
 /**
+ * Sanitasi nilai sel terhadap serangan CSV / Spreadsheet Formula Injection (OWASP A03).
+ * Mencegah eksekusi formula berbahaya (=CMD|, +IMPORTXML, @SUM, dll.) di Google Sheets & Excel.
+ */
+function sanitizeSpreadsheetCell(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val !== 'string') return val;
+  var trimmed = val.trim();
+  if (trimmed === '' || trimmed === '-') return val;
+  var firstChar = trimmed.charAt(0);
+  if (firstChar === '=' || firstChar === '+' || firstChar === '@' || firstChar === '\t' || firstChar === '\r') {
+    return "'" + val;
+  }
+  if (firstChar === '-' && !/^-\d+(\.\d+)?$/.test(trimmed)) {
+    return "'" + val;
+  }
+  return val;
+}
+
+/**
  * Menyimpan file dokumen pendukung (base64) ke folder Google Drive.
- * Jika DriveApp belum diizinkan atau gagal, mengembalikan penanda nama file secara aman.
+ * Dilengkapi validasi keamanan ekstensi (Whitelist), MIME type, dan batas ukuran 5 MB (OWASP A04 / BSSN).
  */
 function saveSupportingDocumentToDrive(base64Data, fileName, mimeType, subfolderName) {
   if (!base64Data || !fileName) return '';
   try {
+    var safeFileName = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
+    var extMatch = safeFileName.match(/\.([a-zA-Z0-9]+)$/);
+    var ext = extMatch ? extMatch[1].toLowerCase() : '';
+    var allowedExts = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+    if (allowedExts.indexOf(ext) === -1) {
+      throw new Error('Format file lampiran tidak diizinkan. Gunakan PDF, JPG, PNG, DOC, atau DOCX.');
+    }
+
     var cleanBase64 = base64Data;
     if (cleanBase64.indexOf(',') !== -1) {
       cleanBase64 = cleanBase64.split(',')[1];
     }
     var decoded = Utilities.base64Decode(cleanBase64);
-    var blob = Utilities.newBlob(decoded, mimeType || 'application/octet-stream', fileName);
+    if (decoded.length > 5 * 1024 * 1024) {
+      throw new Error('Ukuran file lampiran melebihi batas maksimum 5 MB.');
+    }
+    var blob = Utilities.newBlob(decoded, mimeType || 'application/octet-stream', safeFileName);
 
     var mainFolderName = 'PMI_SURAKARTA_DOKUMEN_GUDANG';
     var mainFolders = DriveApp.getFoldersByName(mainFolderName);
@@ -264,7 +294,10 @@ function saveSupportingDocumentToDrive(base64Data, fileName, mimeType, subfolder
     var file = targetFolder.createFile(blob);
     return file.getUrl();
   } catch (err) {
-    return 'File: ' + fileName;
+    if (err.message && (err.message.indexOf('Format file') !== -1 || err.message.indexOf('Ukuran file') !== -1)) {
+      throw err;
+    }
+    return 'File: ' + String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
   }
 }
 
