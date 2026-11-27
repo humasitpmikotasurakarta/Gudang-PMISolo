@@ -886,49 +886,95 @@
     </div>
   </div>
 
-  <!-- Preview Dokumen Laporan Resmi dengan Kop PMI Kota Surakarta -->
+  <!-- Preview Dokumen Laporan Resmi dengan Kop Standar ISO PMI Kota Surakarta -->
   <div class="panel-card" id="reportPreviewContainer">
-    <!-- Kop Surat Laporan -->
-    <div class="border-bottom border-3 border-danger pb-3 mb-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
-      <div class="d-flex align-items-center gap-3">
-        <div class="pmi-cross-logo">
-          <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer">
-        </div>
-        <div>
-          <div class="fw-bolder fs-5 text-danger" id="repMetaInstansi">PALANG MERAH INDONESIA KOTA SURAKARTA</div>
-          <div class="small fw-bold text-dark">GUDANG LOGISTIK &amp; PENANGGULANGAN BENCANA (PB)</div>
-          <div class="small text-muted" id="repMetaAlamat">Jl. Kolonel Sutarto No. 58, Jebres, Kota Surakarta, Jawa Tengah 57126</div>
-        </div>
+    <!-- Kop Dokumen Standar ISO PMI Kota Surakarta (3 Kolom Berbingkai) -->
+    <table class="iso-kop-table">
+      <tbody>
+        <tr>
+          <td class="iso-kop-left" rowspan="2">
+            <div class="iso-kop-brand-row">
+              <img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer" class="iso-kop-logo">
+              <div class="iso-kop-brand-text">
+                <div>Palang</div>
+                <div>Merah</div>
+                <div>Indonesia</div>
+              </div>
+            </div>
+            <div class="iso-kop-city">Kota Surakarta</div>
+          </td>
+          <td class="iso-kop-center-top" colspan="2">
+            <div class="iso-kop-lembar">LEMBAR KERJA</div>
+            <div class="iso-kop-subtitle" id="repMetaTitle">Stok Report / Stok Opname</div>
+          </td>
+          <td class="iso-kop-right" rowspan="2">
+            <div>Halaman 1 dari <span id="repMetaHalTotal">001</span></div>
+            <div>No. : <span id="repMetaDocNo">PMISKA-KR-L4-002</span></div>
+            <div>Versi: 001</div>
+            <div>Tanggal berlaku: 21-01-2022</div>
+            <div>Tanggal kaji ulang: 21-01-2025</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="iso-kop-center-sub">
+            <div>Bagian</div>
+            <div>PB dan Relawan</div>
+          </td>
+          <td class="iso-kop-center-sub">
+            <div>Seksi</div>
+            <div>Kesiapsiagaan dan Respon</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Identitas Gudang & Periode Laporan -->
+    <div class="d-flex flex-wrap align-items-end justify-content-between gap-3">
+      <div class="iso-warehouse-meta">
+        <div class="iso-wh-org" id="repMetaInstansi">Palang Merah Indonesia</div>
+        <table class="iso-wh-table">
+          <tbody>
+            <tr>
+              <td class="iso-wh-label">Nama Gudang</td>
+              <td class="iso-wh-val" id="repMetaNamaGudang">PMI Kota Surakarta</td>
+            </tr>
+            <tr>
+              <td class="iso-wh-label">Lokasi Gudang</td>
+              <td class="iso-wh-val" id="repMetaLokasiGudang">Kota Surakarta</td>
+            </tr>
+            <tr>
+              <td class="iso-wh-label">Periode</td>
+              <td class="iso-wh-val" id="repMetaPeriode">Nov-26</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="d-none" id="repMetaAlamat"></div>
+        <div class="d-none" id="repMetaTglCetak"></div>
       </div>
-      <div class="text-md-end small">
-        <div class="fw-bolder text-dark" id="repMetaTitle">LAPORAN PERSEDIAAN STOK GUDANG</div>
-        <div class="text-muted">Periode: <strong id="repMetaPeriode">Semua Periode</strong></div>
-        <div class="text-muted">Tanggal Cetak: <span id="repMetaTglCetak">-</span></div>
-      </div>
+
+      <!-- Ringkasan Laporan (Hanya Tampil di Layar, Tidak Ikut Tercetak di Lembar Kerja ISO) -->
+      <div id="reportSummaryPills" class="d-flex flex-wrap gap-2 mb-3 no-print"></div>
     </div>
 
-    <!-- Ringkasan Laporan -->
-    <div id="reportSummaryPills" class="d-flex flex-wrap gap-3 mb-3"></div>
-
-    <!-- Tabel Data Laporan -->
-    <div class="table-modern-wrap mb-4">
-      <table class="table-modern" id="reportMainTable">
+    <!-- Tabel Data Lembar Kerja ISO -->
+    <div class="iso-worksheet-wrap mb-3">
+      <table class="iso-worksheet-table" id="reportMainTable">
         <thead id="reportTableHead"></thead>
         <tbody id="reportTableBody"></tbody>
       </table>
     </div>
 
-    <!-- Kolom Tanda Tangan Petugas & Penanggung Jawab -->
-    <div class="row mt-4 pt-3 text-center small">
+    <!-- Blok Tanda Tangan Standar Lembar Kerja PMI Kota Surakarta -->
+    <div class="row iso-signature-block text-center">
       <div class="col-6">
-        <div class="text-muted">Disiapkan Oleh,</div>
-        <div class="fw-bold mb-5">Petugas Operasional Gudang</div>
-        <div class="fw-bold text-decoration-underline" id="repSignPetugas">Petugas Gudang</div>
+        <div>Mengetahui,</div>
+        <div class="mb-5">KaBag PB &amp; Relawan</div>
+        <div class="fw-bold" id="repSignPimpinan">Wanto, S.KM.</div>
       </div>
       <div class="col-6">
-        <div class="text-muted">Mengetahui &amp; Menyetujui,</div>
-        <div class="fw-bold mb-5">Penanggung Jawab / Kepala Markas</div>
-        <div class="fw-bold text-decoration-underline" id="repSignPimpinan">Kepala Markas PMI Kota Surakarta</div>
+        <div>Dibuat oleh :</div>
+        <div class="mb-5">KaSie Kesiapsiagaan dan respon</div>
+        <div class="fw-bold" id="repSignPetugas">Indro Sri Widodo</div>
       </div>
     </div>
   </div>
