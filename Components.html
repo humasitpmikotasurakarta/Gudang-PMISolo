@@ -1217,7 +1217,7 @@
 
             <div class="col-md-4">
               <label class="form-label small fw-bold">HARGA PER UNIT (RP)</label>
-              <input type="number" id="mbHargaUnit" class="form-control" min="0" step="any" value="0" required>
+              <input type="number" id="mbHargaUnit" class="form-control" min="0" step="1" value="0" required>
             </div>
             <div class="col-md-4">
               <label class="form-label small fw-bold">SUMBER</label>
@@ -1254,7 +1254,7 @@
                 <div class="row g-3">
                   <div class="col-md-6">
                     <label class="form-label small fw-bold">JUMLAH STOK AWAL</label>
-                    <input type="number" id="mbStokAwal" class="form-control" min="0" step="any" value="0">
+                    <input type="number" id="mbStokAwal" class="form-control" min="0" step="1" value="0">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label small fw-bold">TANGGAL KEDALUWARSA STOK AWAL (JIKA ADA)</label>
@@ -1353,11 +1353,11 @@
 
             <div class="col-md-4">
               <label class="form-label small fw-bold">JUMLAH MASUK <span class="text-danger">*</span></label>
-              <input type="number" id="inJumlahMasuk" class="form-control fw-bold" min="0.01" step="any" required oninput="calculateTotalNilaiMasuk()">
+              <input type="number" id="inJumlahMasuk" class="form-control fw-bold" min="1" step="1" placeholder="0" required oninput="calculateTotalNilaiMasuk()">
             </div>
             <div class="col-md-4">
               <label class="form-label small fw-bold">HARGA PER UNIT (RP)</label>
-              <input type="number" id="inHargaUnit" class="form-control" min="0" step="any" required oninput="calculateTotalNilaiMasuk()">
+              <input type="number" id="inHargaUnit" class="form-control" min="0" step="1" required oninput="calculateTotalNilaiMasuk()">
             </div>
             <div class="col-md-4">
               <label class="form-label small fw-bold">TOTAL NILAI (RP)</label>
@@ -1472,7 +1472,7 @@
 
             <div class="col-md-4">
               <label class="form-label small fw-bold">JUMLAH KELUAR <span class="text-danger">*</span></label>
-              <input type="number" id="outJumlahKeluar" class="form-control fw-bold" min="0.01" step="any" required oninput="validateOutQtyAgainstStock()">
+              <input type="number" id="outJumlahKeluar" class="form-control fw-bold" min="1" step="1" placeholder="0" required oninput="validateOutQtyAgainstStock()">
               <div id="outStockWarningText" class="form-text text-danger fw-bold d-none">Jumlah melebihi stok tersedia!</div>
             </div>
             <div class="col-md-4">
