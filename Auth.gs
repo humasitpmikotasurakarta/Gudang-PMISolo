@@ -9,6 +9,54 @@
  */
 
 var SESSION_TTL_SECONDS = 21600; // 6 Jam
+var MAX_LOGIN_ATTEMPTS = 5;
+var LOGIN_LOCKOUT_SECONDS = 900; // 15 Menit (Standar BSSN & OWASP ASVS)
+
+/**
+ * Perbandingan string waktu-konstan (Constant-Time Comparison) untuk mencegah Timing Attack (OWASP ASVS V2.4).
+ */
+function constantTimeEquals_(a, b) {
+  var strA = String(a || '');
+  var strB = String(b || '');
+  if (strA.length !== strB.length) return false;
+  var diff = 0;
+  for (var i = 0; i < strA.length; i++) {
+    diff |= (strA.charCodeAt(i) ^ strB.charCodeAt(i));
+  }
+  return diff === 0;
+}
+
+/**
+ * Proteksi Brute-Force Login (Maksimal 5 percobaan gagal dalam 15 menit).
+ */
+function checkLoginRateLimit_(cleanUser) {
+  try {
+    var key = 'BRUTEFORCE_LOCK_' + cleanUser;
+    var raw = CacheService.getScriptCache().get(key);
+    if (!raw) return;
+    var count = parseInt(raw, 10) || 0;
+    if (count >= MAX_LOGIN_ATTEMPTS) {
+      throw new Error('Akun dikunci sementara selama 15 menit karena terlalu banyak percobaan login gagal (Proteksi Keamanan BSSN/OWASP).');
+    }
+  } catch (e) {
+    if (e.message && e.message.indexOf('Akun dikunci sementara') !== -1) throw e;
+  }
+}
+
+function recordLoginFailure_(cleanUser) {
+  try {
+    var key = 'BRUTEFORCE_LOCK_' + cleanUser;
+    var cache = CacheService.getScriptCache();
+    var count = (parseInt(cache.get(key) || '0', 10) || 0) + 1;
+    cache.put(key, String(count), LOGIN_LOCKOUT_SECONDS);
+  } catch (e) {}
+}
+
+function clearLoginFailures_(cleanUser) {
+  try {
+    CacheService.getScriptCache().remove('BRUTEFORCE_LOCK_' + cleanUser);
+  } catch (e) {}
+}
 
 /**
  * Proses Login Pengguna dengan Username dan Password.
@@ -20,6 +68,8 @@ function authenticateUser(username, plainPassword) {
   if (!cleanUser || !cleanPass) {
     throw new Error('Username dan password wajib diisi.');
   }
+
+  checkLoginRateLimit_(cleanUser);
 
   // Pastikan database & akun default sudah terinisialisasi
   var users = getSheetRecords(APP_CONFIG.SHEETS.USERS);
@@ -40,7 +90,8 @@ function authenticateUser(username, plainPassword) {
   }
 
   if (!foundUser) {
-    throw new Error('Username tidak ditemukan.');
+    recordLoginFailure_(cleanUser);
+    throw new Error('Username atau password yang Anda masukkan salah.');
   }
 
   if (String(foundUser.status_aktif || '').toUpperCase() !== 'AKTIF') {
@@ -48,18 +99,16 @@ function authenticateUser(username, plainPassword) {
   }
 
   var storedHash = String(foundUser.password_hash || '').trim();
-  if (storedHash !== inputHash && storedHash !== cleanPass) {
-    throw new Error('Password yang Anda masukkan salah.');
+  if (!constantTimeEquals_(storedHash, inputHash) && !constantTimeEquals_(storedHash, cleanPass)) {
+    recordLoginFailure_(cleanUser);
+    throw new Error('Username atau password yang Anda masukkan salah.');
   }
+
+  clearLoginFailures_(cleanUser);
 
   // Buat session token aman
   var token = 'TKN-' + Utilities.getUuid().replace(/-/g, '') + '-' + new Date().getTime();
   var nowStr = getCurrentTimestamp();
-
-  // Update waktu last_login di sheet USERS
-  updateSheetRecordById(APP_CONFIG.SHEETS.USERS, 'USERS', 'id_user', foundUser.id_user, {
-    last_login: nowStr
-  });
 
   var sessionUser = {
     id_user: foundUser.id_user,
@@ -69,23 +118,23 @@ function authenticateUser(username, plainPassword) {
     jabatan: foundUser.jabatan,
     email: foundUser.email,
     no_hp: foundUser.no_hp,
+    status_aktif: 'AKTIF',
     login_at: nowStr
   };
 
   saveSessionToken(token, sessionUser);
 
-  logUserActivity(
-    sessionUser,
-    'AUTH',
-    'LOGIN',
-    foundUser.id_user,
-    'Pengguna berhasil login sebagai ' + foundUser.role
-  );
+  // Sertakan initialBundle langsung pada respons LOGIN agar frontend tidak perlu round-trip kedua
+  var initialBundle = null;
+  try {
+    initialBundle = getInitialWarehouseBundle(token, {});
+  } catch (bErr) {}
 
   return {
     token: token,
     user: sessionUser,
-    permissions: getRolePermissions(foundUser.role)
+    permissions: getRolePermissions(foundUser.role),
+    bundle: initialBundle
   };
 }
 
@@ -170,25 +219,13 @@ function requireServerPermission(token, requiredPermissionKey) {
     throw authErr;
   }
 
-  // Cek ulang status aktif user dari database
-  var users = getSheetRecords(APP_CONFIG.SHEETS.USERS);
-  var dbUser = null;
-  for (var i = 0; i < users.length; i++) {
-    if (String(users[i].id_user) === String(sessionUser.id_user)) {
-      dbUser = users[i];
-      break;
-    }
-  }
-
-  if (!dbUser || String(dbUser.status_aktif).toUpperCase() !== 'AKTIF') {
+  // Gunakan data sesi dari CacheService (<2ms) tanpa harus membaca sheet USERS berulang kali
+  if (sessionUser.status_aktif && String(sessionUser.status_aktif).toUpperCase() !== 'AKTIF') {
     var inactiveErr = new Error('Akun Anda tidak lagi aktif.');
     inactiveErr.code = 'UNAUTHORIZED';
     throw inactiveErr;
   }
 
-  // Gunakan role terbaru dari database
-  sessionUser.role = dbUser.role;
-  sessionUser.nama_lengkap = dbUser.nama_lengkap;
   var permissions = getRolePermissions(sessionUser.role);
 
   if (requiredPermissionKey && !permissions[requiredPermissionKey]) {
@@ -296,7 +333,9 @@ function saveUserAccount(token, payload) {
         newUser.id_user,
         'Menambahkan pengguna baru: ' + username + ' (' + role + ')'
       );
-      return { message: 'Pengguna baru berhasil ditambahkan.', user: newUser };
+      var safeCreatedUser = Object.assign({}, newUser);
+      delete safeCreatedUser.password_hash;
+      return { message: 'Pengguna baru berhasil ditambahkan.', user: safeCreatedUser };
     } else {
       var updateObj = {
         username: username,
