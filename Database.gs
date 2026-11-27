@@ -12,20 +12,67 @@
 // Cache per-eksekusi untuk mencegah pemanggilan SpreadsheetApp.openById & getValues berulang-ulang
 var _CACHED_SS = null;
 var _EXEC_SHEET_CACHE = {};
-var SHEET_CACHE_TTL_SECONDS = 300; // 5 menit di CacheService
+var _PRELOADED_BATCH_CACHE = false;
+var SHEET_CACHE_TTL_SECONDS = 600; // 10 menit di CacheService
+var BUNDLE_CACHE_KEY = 'PMI_SKA_FAST_BUNDLE_V3';
 
 function getSheetCacheKey_(sheetName) {
-  return 'PMI_SKA_SHEET_V2_' + String(sheetName || '').trim();
+  return 'PMI_SKA_SHEET_V3_' + String(sheetName || '').trim();
+}
+
+/**
+ * Memuat seluruh sheet utama dari CacheService dalam 1 kali panggilan batch getAll() (< 8ms)
+ */
+function preloadAllSheetsFromCache_() {
+  if (_PRELOADED_BATCH_CACHE) return;
+  _PRELOADED_BATCH_CACHE = true;
+  try {
+    var sheetNames = [
+      APP_CONFIG.SHEETS.SETTINGS,
+      APP_CONFIG.SHEETS.MASTER_BARANG,
+      APP_CONFIG.SHEETS.STOCK_BALANCE,
+      APP_CONFIG.SHEETS.DONOR_SUMBER,
+      APP_CONFIG.SHEETS.TRANSAKSI_MASUK,
+      APP_CONFIG.SHEETS.TRANSAKSI_KELUAR,
+      APP_CONFIG.SHEETS.STOCK_OPNAME
+    ];
+    var keys = [];
+    var keyToSheet = {};
+    for (var i = 0; i < sheetNames.length; i++) {
+      var sName = sheetNames[i];
+      if (!_EXEC_SHEET_CACHE[sName]) {
+        var k = getSheetCacheKey_(sName);
+        keys.push(k);
+        keyToSheet[k] = sName;
+      }
+    }
+    if (keys.length === 0) return;
+    var batchHit = CacheService.getScriptCache().getAll(keys);
+    for (var cKey in batchHit) {
+      if (batchHit.hasOwnProperty(cKey) && batchHit[cKey]) {
+        var targetSheet = keyToSheet[cKey];
+        if (targetSheet) {
+          _EXEC_SHEET_CACHE[targetSheet] = JSON.parse(batchHit[cKey]);
+        }
+      }
+    }
+  } catch (e) {}
 }
 
 function invalidateSheetCache(sheetName) {
   if (!sheetName) {
     _EXEC_SHEET_CACHE = {};
+    try {
+      CacheService.getScriptCache().remove(BUNDLE_CACHE_KEY);
+    } catch (e0) {}
     return;
   }
   delete _EXEC_SHEET_CACHE[sheetName];
   try {
-    CacheService.getScriptCache().remove(getSheetCacheKey_(sheetName));
+    CacheService.getScriptCache().removeAll([
+      getSheetCacheKey_(sheetName),
+      BUNDLE_CACHE_KEY
+    ]);
   } catch (e) {}
 }
 
@@ -252,7 +299,7 @@ function insertSheetRecord(sheetName, headerKey, recordObj) {
   for (var i = 0; i < headers.length; i++) {
     var h = headers[i];
     var v = recordObj[h];
-    rowArray.push(v !== undefined && v !== null ? v : '');
+    rowArray.push(v !== undefined && v !== null ? sanitizeSpreadsheetCell(v) : '');
   }
 
   sheet.appendRow(rowArray);
@@ -276,7 +323,7 @@ function batchInsertSheetRecords(sheetName, headerKey, recordsArray) {
     for (var c = 0; c < headers.length; c++) {
       var col = headers[c];
       var val = rec[col];
-      row.push(val !== undefined && val !== null ? val : '');
+      row.push(val !== undefined && val !== null ? sanitizeSpreadsheetCell(val) : '');
     }
     rowsMatrix.push(row);
   }
@@ -309,7 +356,7 @@ function updateSheetRecordById(sheetName, headerKey, idColumnName, idValue, upda
       for (var c = 0; c < headers.length; c++) {
         var colKey = headers[c];
         if (updatedFields.hasOwnProperty(colKey) && updatedFields[colKey] !== undefined) {
-          currentRow[c] = updatedFields[colKey];
+          currentRow[c] = sanitizeSpreadsheetCell(updatedFields[colKey]);
         }
       }
       sheet.getRange(r + 1, 1, 1, headers.length).setValues([currentRow]);
