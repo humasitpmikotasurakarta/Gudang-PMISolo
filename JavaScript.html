@@ -1248,6 +1248,9 @@
       confirmIcon: 'bi-box-arrow-right'
     }).then(function(confirmed) {
       if (!confirmed) return;
+      if (APP_STATE.token) {
+        callServerApi('LOGOUT', {}, { silent: true }).catch(function() {});
+      }
       handleForceLogout('Anda telah keluar dari sistem.');
     });
   }
@@ -4591,8 +4594,27 @@
   /* ==========================================================================
    * 15. MESIN EXPORT EXCEL (.XLSX) BERFORMAT KOP ISO & CETAK DOKUMEN RESMI
    * ========================================================================== */
+  function sanitizeExcelCellClient(val) {
+    if (val === null || val === undefined) return '';
+    if (typeof val !== 'string') return val;
+    var trimmed = val.trim();
+    if (trimmed === '' || trimmed === '-') return val;
+    var c0 = trimmed.charAt(0);
+    if (c0 === '=' || c0 === '+' || c0 === '@' || c0 === '\t' || c0 === '\r') {
+      return "'" + val;
+    }
+    if (c0 === '-' && !/^-\d+(\.\d+)?$/.test(trimmed)) {
+      return "'" + val;
+    }
+    return val;
+  }
+
   function padRowToCols(arr, totalCols) {
-    var out = (arr || []).slice();
+    var src = (arr || []);
+    var out = [];
+    for (var i = 0; i < src.length; i++) {
+      out.push(sanitizeExcelCellClient(src[i]));
+    }
     while (out.length < totalCols) out.push('');
     return out;
   }
@@ -5352,11 +5374,24 @@
         return;
       }
       var file = fileInput.files[0];
+      var extMatch = String(file.name || '').match(/\.([a-zA-Z0-9]+)$/);
+      var ext = extMatch ? extMatch[1].toLowerCase() : '';
+      var allowedExts = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+      if (allowedExts.indexOf(ext) === -1) {
+        showToast('Format lampiran tidak diizinkan (' + ext + '). Gunakan PDF, JPG, PNG, DOC, atau DOCX.', 'danger');
+        resolve(null);
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('Ukuran file lampiran melebihi batas maksimum 5 MB.', 'danger');
+        resolve(null);
+        return;
+      }
       var reader = new FileReader();
       reader.onload = function(evt) {
         resolve({
           base64: evt.target.result,
-          name: file.name,
+          name: file.name.replace(/[^a-zA-Z0-9._-]/g, '_'),
           mime: file.type
         });
       };
