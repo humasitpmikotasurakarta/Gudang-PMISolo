@@ -1990,20 +1990,354 @@
     renderPaginationControls('trxMasukPagination', currentPage, totalPages, 'renderTransaksiMasukTable');
   }
 
-  function populateTransaksiItemDropdown(mode, selectedId) {
-    var filterSelect = document.getElementById(mode === 'in' ? 'inFilterKategori' : 'outFilterKategori');
-    var itemSelect = document.getElementById(mode === 'in' ? 'inIdBarang' : 'outIdBarang');
-    var kat = filterSelect.value || 'SEMUA';
+  /* ==========================================================================
+   * AUTOCOMPLETE SEARCH BARANG (CARI NAMA / KODE BARANG DI MODAL GRN & GDN)
+   * ========================================================================== */
+  var BARANG_AC_STATE = {
+    in: { activeIndex: -1, filteredItems: [], isTypingSearch: false },
+    out: { activeIndex: -1, filteredItems: [], isTypingSearch: false }
+  };
 
-    var html = '<option value="">-- Pilih Barang --</option>';
-    for (var i = 0; i < APP_STATE.masterBarang.length; i++) {
-      var it = APP_STATE.masterBarang[i];
+  function formatBarangAcDisplayText(item) {
+    if (!item) return '';
+    return '[' + item.kode_barang + '] ' + item.nama_barang + ' (Stok: ' + formatNumber(item.saldo_stok) + ' ' + item.satuan + ')';
+  }
+
+  function highlightAutocompleteMatch(text, rawQuery) {
+    var safeText = escapeHtml(text || '');
+    var q = String(rawQuery || '').trim();
+    if (!q) return safeText;
+    var escapedRegex = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      var re = new RegExp('(' + escapedRegex + ')', 'gi');
+      return safeText.replace(re, '<mark class="pmi-ac-highlight">$1</mark>');
+    } catch (e) {
+      return safeText;
+    }
+  }
+
+  function getFilteredItemsForAutocomplete(mode, searchQuery) {
+    var filterSelect = document.getElementById(mode === 'in' ? 'inFilterKategori' : 'outFilterKategori');
+    var hiddenInput = document.getElementById(mode === 'in' ? 'inIdBarang' : 'outIdBarang');
+    var selectedId = hiddenInput ? hiddenInput.value : '';
+    var kat = filterSelect ? (filterSelect.value || 'SEMUA') : 'SEMUA';
+    var q = String(searchQuery || '').trim().toLowerCase();
+    var tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+
+    var results = [];
+    var all = APP_STATE.masterBarang || [];
+    for (var i = 0; i < all.length; i++) {
+      var it = all[i];
       if (it.status_aktif !== 'AKTIF' && it.id_barang !== selectedId) continue;
       if (kat !== 'SEMUA' && it.kategori !== kat) continue;
-      var sel = (it.id_barang === selectedId) ? ' selected' : '';
-      html += '<option value="' + it.id_barang + '"' + sel + '>[' + escapeHtml(it.kode_barang) + '] ' + escapeHtml(it.nama_barang) + ' (Stok: ' + formatNumber(it.saldo_stok) + ' ' + escapeHtml(it.satuan) + ')</option>';
+
+      if (tokens.length > 0) {
+        var hay = (
+          String(it.kode_barang || '') + ' ' +
+          String(it.nama_barang || '') + ' ' +
+          String(it.kategori || '') + ' ' +
+          String(it.subkategori || '') + ' ' +
+          String(it.sumber_donor || '')
+        ).toLowerCase();
+        var allMatched = true;
+        for (var t = 0; t < tokens.length; t++) {
+          if (hay.indexOf(tokens[t]) === -1) {
+            allMatched = false;
+            break;
+          }
+        }
+        if (!allMatched) continue;
+      }
+      results.push(it);
     }
-    itemSelect.innerHTML = html;
+    return results;
+  }
+
+  function renderBarangAutocompleteOptions(mode, searchQuery) {
+    var listEl = document.getElementById(mode + 'BarangAutocompleteList');
+    var countEl = document.getElementById(mode + 'BarangAcCountText');
+    var hiddenInput = document.getElementById(mode + 'IdBarang');
+    if (!listEl) return;
+
+    var selectedId = hiddenInput ? hiddenInput.value : '';
+    var filtered = getFilteredItemsForAutocomplete(mode, searchQuery);
+    BARANG_AC_STATE[mode].filteredItems = filtered;
+
+    if (BARANG_AC_STATE[mode].activeIndex >= filtered.length) {
+      BARANG_AC_STATE[mode].activeIndex = filtered.length > 0 ? 0 : -1;
+    } else if (BARANG_AC_STATE[mode].activeIndex < 0 && filtered.length > 0 && searchQuery) {
+      BARANG_AC_STATE[mode].activeIndex = 0;
+    }
+
+    if (countEl) {
+      countEl.textContent = searchQuery
+        ? ('Ditemukan ' + filtered.length + ' barang cocok')
+        : ('Menampilkan ' + filtered.length + ' barang aktif');
+    }
+
+    if (filtered.length === 0) {
+      listEl.innerHTML =
+        '<div class="pmi-ac-empty">' +
+          '<i class="bi bi-inbox fs-5 d-block mb-1"></i>' +
+          'Tidak ditemukan barang dengan nama atau kode <strong>"' + escapeHtml(searchQuery) + '"</strong>.' +
+        '</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < filtered.length; i++) {
+      var it = filtered[i];
+      var isSelected = (it.id_barang === selectedId);
+      var isActive = (i === BARANG_AC_STATE[mode].activeIndex);
+      var saldo = Number(it.saldo_stok) || 0;
+      var stokMin = Number(it.stok_minimum) || 0;
+      var stockCls = saldo <= 0 ? 'stock-zero' : (saldo <= stokMin ? 'stock-low' : '');
+
+      html +=
+        '<div class="pmi-ac-item' + (isActive ? ' ac-active' : '') + (isSelected ? ' ac-selected' : '') + '" ' +
+             'data-id-barang="' + escapeHtml(it.id_barang) + '" ' +
+             'data-ac-index="' + i + '" ' +
+             'onmousedown="selectBarangAutocompleteItem(\'' + mode + '\', \'' + it.id_barang + '\')">' +
+          '<div class="pmi-ac-item-main">' +
+            '<div class="pmi-ac-item-top">' +
+              '<span class="pmi-ac-code-badge">' + highlightAutocompleteMatch(it.kode_barang, searchQuery) + '</span>' +
+              '<span class="pmi-ac-cat-tag">' + escapeHtml(it.kategori) + '</span>' +
+              (it.sumber_donor && it.sumber_donor !== '-' ? '<span class="small text-muted">&bull; ' + escapeHtml(it.sumber_donor) + '</span>' : '') +
+            '</div>' +
+            '<div class="pmi-ac-item-name">' + highlightAutocompleteMatch(it.nama_barang, searchQuery) + '</div>' +
+          '</div>' +
+          '<div class="pmi-ac-item-right">' +
+            '<span class="pmi-ac-stock-pill ' + stockCls + '">Stok: ' + formatNumber(saldo) + ' ' + escapeHtml(it.satuan) + '</span>' +
+          '</div>' +
+        '</div>';
+    }
+    listEl.innerHTML = html;
+
+    if (BARANG_AC_STATE[mode].activeIndex >= 0) {
+      var activeEl = listEl.querySelector('.pmi-ac-item[data-ac-index="' + BARANG_AC_STATE[mode].activeIndex + '"]');
+      if (activeEl && activeEl.scrollIntoView) {
+        activeEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }
+
+  function openBarangAutocomplete(mode) {
+    var dropdown = document.getElementById(mode + 'BarangAutocompleteDropdown');
+    var searchInput = document.getElementById(mode + 'BarangSearchInput');
+    var hiddenInput = document.getElementById(mode + 'IdBarang');
+    if (!dropdown || !searchInput) return;
+
+    // Jika sudah ada barang terpilih dan user baru klik fokus, tampilkan semua opsi (dan select teks agar mudah langsung ketik baru)
+    var queryToRender = BARANG_AC_STATE[mode].isTypingSearch ? searchInput.value : '';
+    if (hiddenInput && hiddenInput.value && !BARANG_AC_STATE[mode].isTypingSearch) {
+      setTimeout(function() {
+        try { searchInput.select(); } catch (e) {}
+      }, 10);
+    }
+
+    renderBarangAutocompleteOptions(mode, queryToRender);
+    dropdown.classList.add('show');
+  }
+
+  function closeBarangAutocomplete(mode) {
+    var dropdown = document.getElementById(mode + 'BarangAutocompleteDropdown');
+    var searchInput = document.getElementById(mode + 'BarangSearchInput');
+    var hiddenInput = document.getElementById(mode + 'IdBarang');
+    if (dropdown) dropdown.classList.remove('show');
+    BARANG_AC_STATE[mode].isTypingSearch = false;
+
+    // Kembalikan teks tampilan barang jika sudah ada id_barang terpilih
+    if (hiddenInput && hiddenInput.value && searchInput) {
+      var item = (APP_STATE.masterBarang || []).find(function(x) { return x.id_barang === hiddenInput.value; });
+      if (item) {
+        searchInput.value = formatBarangAcDisplayText(item);
+        searchInput.classList.add('has-selected-item');
+      }
+    }
+  }
+
+  function toggleBarangAutocomplete(mode) {
+    var dropdown = document.getElementById(mode + 'BarangAutocompleteDropdown');
+    var searchInput = document.getElementById(mode + 'BarangSearchInput');
+    if (!dropdown) return;
+    if (dropdown.classList.contains('show')) {
+      closeBarangAutocomplete(mode);
+    } else {
+      BARANG_AC_STATE[mode].isTypingSearch = false;
+      openBarangAutocomplete(mode);
+      if (searchInput) searchInput.focus();
+    }
+  }
+
+  function handleBarangAutocompleteInput(mode) {
+    var searchInput = document.getElementById(mode + 'BarangSearchInput');
+    var hiddenInput = document.getElementById(mode + 'IdBarang');
+    var clearBtn = document.getElementById(mode + 'BarangClearBtn');
+    var dropdown = document.getElementById(mode + 'BarangAutocompleteDropdown');
+    if (!searchInput) return;
+
+    var q = searchInput.value;
+    BARANG_AC_STATE[mode].isTypingSearch = true;
+    BARANG_AC_STATE[mode].activeIndex = 0;
+
+    // Reset id_barang saat user mengetik pencarian baru
+    if (hiddenInput && hiddenInput.value) {
+      hiddenInput.value = '';
+      searchInput.classList.remove('has-selected-item');
+      if (mode === 'in') handleSelectBarangMasukChange();
+      else handleSelectBarangKeluarChange();
+    }
+
+    if (clearBtn) {
+      if (q.length > 0) clearBtn.classList.remove('d-none');
+      else clearBtn.classList.add('d-none');
+    }
+
+    renderBarangAutocompleteOptions(mode, q);
+    if (dropdown) dropdown.classList.add('show');
+  }
+
+  function handleBarangAutocompleteKeydown(e, mode) {
+    var dropdown = document.getElementById(mode + 'BarangAutocompleteDropdown');
+    var filtered = BARANG_AC_STATE[mode].filteredItems || [];
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!dropdown || !dropdown.classList.contains('show')) {
+        openBarangAutocomplete(mode);
+        return;
+      }
+      if (filtered.length > 0) {
+        BARANG_AC_STATE[mode].activeIndex = (BARANG_AC_STATE[mode].activeIndex + 1) % filtered.length;
+        var qDown = BARANG_AC_STATE[mode].isTypingSearch ? document.getElementById(mode + 'BarangSearchInput').value : '';
+        renderBarangAutocompleteOptions(mode, qDown);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!dropdown || !dropdown.classList.contains('show')) {
+        openBarangAutocomplete(mode);
+        return;
+      }
+      if (filtered.length > 0) {
+        BARANG_AC_STATE[mode].activeIndex = (BARANG_AC_STATE[mode].activeIndex - 1 + filtered.length) % filtered.length;
+        var qUp = BARANG_AC_STATE[mode].isTypingSearch ? document.getElementById(mode + 'BarangSearchInput').value : '';
+        renderBarangAutocompleteOptions(mode, qUp);
+      }
+    } else if (e.key === 'Enter') {
+      if (dropdown && dropdown.classList.contains('show')) {
+        e.preventDefault();
+        var idx = BARANG_AC_STATE[mode].activeIndex >= 0 ? BARANG_AC_STATE[mode].activeIndex : 0;
+        if (filtered[idx]) {
+          selectBarangAutocompleteItem(mode, filtered[idx].id_barang);
+        }
+      }
+    } else if (e.key === 'Escape') {
+      if (dropdown && dropdown.classList.contains('show')) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeBarangAutocomplete(mode);
+      }
+    }
+  }
+
+  function selectBarangAutocompleteItem(mode, idBarang) {
+    var hiddenInput = document.getElementById(mode + 'IdBarang');
+    var searchInput = document.getElementById(mode + 'BarangSearchInput');
+    var clearBtn = document.getElementById(mode + 'BarangClearBtn');
+    var dropdown = document.getElementById(mode + 'BarangAutocompleteDropdown');
+
+    var item = (APP_STATE.masterBarang || []).find(function(x) { return x.id_barang === idBarang; });
+    if (!item) return;
+
+    if (hiddenInput) hiddenInput.value = item.id_barang;
+    if (searchInput) {
+      searchInput.value = formatBarangAcDisplayText(item);
+      searchInput.classList.add('has-selected-item');
+    }
+    if (clearBtn) clearBtn.classList.remove('d-none');
+    if (dropdown) dropdown.classList.remove('show');
+    BARANG_AC_STATE[mode].isTypingSearch = false;
+
+    if (mode === 'in') {
+      handleSelectBarangMasukChange();
+    } else {
+      handleSelectBarangKeluarChange();
+    }
+  }
+
+  function clearBarangAutocomplete(mode, shouldFocusInput) {
+    var hiddenInput = document.getElementById(mode + 'IdBarang');
+    var searchInput = document.getElementById(mode + 'BarangSearchInput');
+    var clearBtn = document.getElementById(mode + 'BarangClearBtn');
+
+    if (hiddenInput) hiddenInput.value = '';
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.classList.remove('has-selected-item');
+    }
+    if (clearBtn) clearBtn.classList.add('d-none');
+    BARANG_AC_STATE[mode].isTypingSearch = false;
+    BARANG_AC_STATE[mode].activeIndex = -1;
+
+    if (mode === 'in') {
+      handleSelectBarangMasukChange();
+    } else {
+      handleSelectBarangKeluarChange();
+    }
+
+    if (shouldFocusInput && searchInput) {
+      openBarangAutocomplete(mode);
+      searchInput.focus();
+    }
+  }
+
+  // Tutup dropdown autocomplete saat klik di luar area
+  document.addEventListener('mousedown', function(evt) {
+    ['in', 'out'].forEach(function(mode) {
+      var wrap = document.getElementById(mode + 'BarangAutocompleteWrap');
+      if (wrap && !wrap.contains(evt.target)) {
+        closeBarangAutocomplete(mode);
+      }
+    });
+  });
+
+  function populateTransaksiItemDropdown(mode, selectedId) {
+    var filterSelect = document.getElementById(mode === 'in' ? 'inFilterKategori' : 'outFilterKategori');
+    var hiddenInput = document.getElementById(mode === 'in' ? 'inIdBarang' : 'outIdBarang');
+    var searchInput = document.getElementById(mode === 'in' ? 'inBarangSearchInput' : 'outBarangSearchInput');
+    var clearBtn = document.getElementById(mode === 'in' ? 'inBarangClearBtn' : 'outBarangClearBtn');
+    var kat = filterSelect ? (filterSelect.value || 'SEMUA') : 'SEMUA';
+
+    var targetId = selectedId !== undefined ? selectedId : (hiddenInput ? hiddenInput.value : '');
+    var selectedItem = null;
+    if (targetId) {
+      selectedItem = (APP_STATE.masterBarang || []).find(function(x) { return x.id_barang === targetId; });
+      if (selectedItem && kat !== 'SEMUA' && selectedItem.kategori !== kat && selectedId === undefined) {
+        selectedItem = null;
+      }
+    }
+
+    if (selectedItem) {
+      if (hiddenInput) hiddenInput.value = selectedItem.id_barang;
+      if (searchInput) {
+        searchInput.value = formatBarangAcDisplayText(selectedItem);
+        searchInput.classList.add('has-selected-item');
+      }
+      if (clearBtn) clearBtn.classList.remove('d-none');
+    } else {
+      if (hiddenInput) hiddenInput.value = '';
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.classList.remove('has-selected-item');
+      }
+      if (clearBtn) clearBtn.classList.add('d-none');
+      if (mode === 'in') handleSelectBarangMasukChange();
+      else handleSelectBarangKeluarChange();
+    }
+
+    BARANG_AC_STATE[mode].isTypingSearch = false;
+    BARANG_AC_STATE[mode].activeIndex = -1;
+    renderBarangAutocompleteOptions(mode, '');
   }
 
   function openTransaksiMasukModal(idMasuk) {
@@ -2063,6 +2397,19 @@
 
   function handleSaveTransaksiMasuk(e) {
     e.preventDefault();
+    var idBarangInput = document.getElementById('inIdBarang');
+    if (!idBarangInput.value) {
+      var typedIn = (document.getElementById('inBarangSearchInput').value || '').trim();
+      var candidatesIn = getFilteredItemsForAutocomplete('in', typedIn);
+      if (typedIn && candidatesIn.length === 1) {
+        selectBarangAutocompleteItem('in', candidatesIn[0].id_barang);
+      } else {
+        showToast('Silakan pilih barang dari daftar pencarian terlebih dahulu.', 'warning');
+        openBarangAutocomplete('in');
+        document.getElementById('inBarangSearchInput').focus();
+        return;
+      }
+    }
     var fileInput = document.getElementById('inDokumenFile');
     var qtyIn = parseFloat(document.getElementById('inJumlahMasuk').value) || 0;
     var hrgIn = parseFloat(document.getElementById('inHargaUnit').value) || 0;
@@ -2348,6 +2695,19 @@
 
   function handleSaveTransaksiKeluar(e) {
     e.preventDefault();
+    var idBarangOutInput = document.getElementById('outIdBarang');
+    if (!idBarangOutInput.value) {
+      var typedOut = (document.getElementById('outBarangSearchInput').value || '').trim();
+      var candidatesOut = getFilteredItemsForAutocomplete('out', typedOut);
+      if (typedOut && candidatesOut.length === 1) {
+        selectBarangAutocompleteItem('out', candidatesOut[0].id_barang);
+      } else {
+        showToast('Silakan pilih barang dari daftar pencarian terlebih dahulu.', 'warning');
+        openBarangAutocomplete('out');
+        document.getElementById('outBarangSearchInput').focus();
+        return;
+      }
+    }
     var maxStock = parseFloat(document.getElementById('outStokTersediaDisplay').getAttribute('data-max-stock') || '0');
     var qty = parseFloat(document.getElementById('outJumlahKeluar').value || '0');
 
