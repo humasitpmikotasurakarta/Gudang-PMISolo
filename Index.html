@@ -20,8 +20,9 @@
   <!-- Chart.js 4 untuk Grafik Interaktif Dashboard -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
-  <!-- SheetJS (xlsx) untuk Import & Export Excel (.xlsx) Multi-Sheet -->
+  <!-- SheetJS (xlsx + xlsx-js-style) untuk Import & Export Excel (.xlsx) Multi-Sheet Berformat Kop ISO -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
   <!-- Include CSS Modular -->
   <?!= include('CSS'); ?>
@@ -146,7 +147,7 @@
               </div>
             </div>
           </div>
-         
+          <!-- Bar Konfigurasi Koneksi Vercel <-> GAS -->
         <div class="d-flex align-items-center justify-content-between mt-3 pt-2 border-top small">
           <span class="text-muted" style="font-size: 0.73rem;">
             <i class="bi bi-cloud-check-fill text-success me-1"></i>Backend: <strong id="gasConnectionModeLabel">Google
