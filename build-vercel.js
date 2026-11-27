@@ -32,7 +32,18 @@ if (process.env.GAS_WEB_APP_URL && process.env.GAS_WEB_APP_URL.trim() !== '') {
   );
 }
 
-const bundledHtml = indexHtml
+let cleanIndexHtml = indexHtml;
+
+// Safeguard: Jika Index.html di GitHub terlanjur tertimpa file hasil bundle lama (yang memiliki broken tag di dalam script),
+// pulihkan blok <!-- Include JavaScript Modular --> hingga </body> menjadi template bersih terlebih dahulu.
+if (cleanIndexHtml.indexOf('escapedRegex') !== -1 || (cleanIndexHtml.indexOf('<!-- Include JavaScript Modular -->') !== -1 && cleanIndexHtml.indexOf('var APP_STATE =') !== -1)) {
+  cleanIndexHtml = cleanIndexHtml.replace(
+    /<!-- Include JavaScript Modular -->[\s\S]*<\/body>/,
+    "<!-- Include JavaScript Modular -->\n  <?!= include('JavaScript'); ?>\n</body>"
+  );
+}
+
+const bundledHtml = cleanIndexHtml
   .replace(/<\?!=\s*include\(['"]CSS['"]\);\s*\?>/g, function() { return cssHtml; })
   .replace(/<\?!=\s*include\(['"]Components['"]\);\s*\?>/g, function() { return componentsHtml; })
   .replace(/<\?!=\s*include\(['"]JavaScript['"]\);\s*\?>/g, function() { return jsHtml; });
