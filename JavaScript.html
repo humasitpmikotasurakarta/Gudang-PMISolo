@@ -2380,13 +2380,14 @@
     var item = APP_STATE.masterBarang.find(function(x) { return x.id_barang === idB; });
     if (!item) {
       document.getElementById('inKodeSatuanDisplay').value = '-';
+      document.getElementById('inHargaUnit').value = 0;
+      document.getElementById('inSumberDonor').value = '';
+      calculateTotalNilaiMasuk();
       return;
     }
     document.getElementById('inKodeSatuanDisplay').value = item.kode_barang + ' (' + item.satuan + ')';
     document.getElementById('inHargaUnit').value = item.harga_unit || 0;
-    if (!document.getElementById('inSumberDonor').value && item.sumber_donor && item.sumber_donor !== '-') {
-      document.getElementById('inSumberDonor').value = item.sumber_donor;
-    }
+    document.getElementById('inSumberDonor').value = (item.sumber_donor && item.sumber_donor !== '-') ? item.sumber_donor : '';
     calculateTotalNilaiMasuk();
   }
 
