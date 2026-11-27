@@ -3019,12 +3019,257 @@
   }
 
   /* ==========================================================================
-   * 12. PUSAT LAPORAN - 12 JENIS LAPORAN (BAB 10)
+   * 12. PUSAT LAPORAN - 12 JENIS LAPORAN STANDAR ISO PMI SURAKARTA (BAB 10)
    * ========================================================================== */
   function openQuickReport(reportType) {
     switchView('laporan');
     document.getElementById('reportTypeSelect').value = reportType;
     generateSelectedReport();
+  }
+
+  function formatPeriodeIsoLabel(startDate, endDate) {
+    var monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (startDate && endDate) {
+      if (startDate.substring(0, 7) === endDate.substring(0, 7)) {
+        var dSame = new Date(startDate);
+        if (!isNaN(dSame.getTime())) {
+          return monthsShort[dSame.getMonth()] + '-' + String(dSame.getFullYear()).slice(-2);
+        }
+      }
+      return startDate + ' s/d ' + endDate;
+    }
+    var refDateStr = endDate || startDate;
+    var dRef = refDateStr ? new Date(refDateStr) : new Date();
+    if (isNaN(dRef.getTime())) dRef = new Date();
+    return monthsShort[dRef.getMonth()] + '-' + String(dRef.getFullYear()).slice(-2);
+  }
+
+  function formatDateSlash(dateStr) {
+    if (!dateStr || dateStr === '-') return '';
+    var s = String(dateStr).trim().substring(0, 10);
+    var parts = s.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      var m = parseInt(parts[1], 10);
+      var d = parseInt(parts[2], 10);
+      var y = parts[0];
+      if (!isNaN(m) && !isNaN(d)) {
+        return m + '/' + d + '/' + y;
+      }
+    }
+    return s;
+  }
+
+  function renderAccountingRupiahCell(val) {
+    if (val === '' || val === null || val === undefined) return '';
+    var num = Number(val) || 0;
+    var disp = num > 0 ? formatNumber(num) : '-';
+    return '<div class="iso-acct-cell"><span>Rp</span><span>' + disp + '</span></div>';
+  }
+
+  var ISO_STOCK_COLUMNS_18 = [
+    'No', 'Nama Barang', 'Code', 'Unit', 'Harga/Unit', 'Sumber',
+    'Request', 'GDN', 'GRN', 'Tanggal', 'Kepada / Dari',
+    'Awal', 'Masuk', 'Keluar', 'Balance', 'Total Nilai (Rp)',
+    'Ex-date', 'Catatan'
+  ];
+
+  /**
+   * Membangun baris-baris Lembar Kerja Stok Report / Stok Opname 18 Kolom
+   * persis sesuai format ISO PMI Kota Surakarta (per-barang + riwayat transaksi + baris "Total :").
+   */
+  function buildIsoStockWorksheetLedgerRows(items, startDate, endDate) {
+    var rows = [];
+    var txInAll = APP_STATE.transaksiMasuk || [];
+    var txOutAll = APP_STATE.transaksiKeluar || [];
+    var opAll = APP_STATE.stockOpnameList || [];
+
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var itemNo = i + 1;
+      var idB = String(it.id_barang);
+      var hargaDefault = Number(it.harga_unit) || 0;
+      var sumberDefault = (it.sumber_donor && it.sumber_donor !== '-') ? it.sumber_donor : '';
+
+      var rawEvents = [];
+      for (var m = 0; m < txInAll.length; m++) {
+        var txIn = txInAll[m];
+        if (String(txIn.id_barang) !== idB) continue;
+        var catatanIn = String(txIn.catatan || '');
+        var grnIn = (txIn.no_grn && txIn.no_grn !== '-') ? txIn.no_grn : '';
+        var isSaldoAwalEntry = catatanIn.toLowerCase().indexOf('saldo awal') !== -1 || grnIn.indexOf('/INIT/') !== -1;
+        rawEvents.push({
+          tanggal: String(txIn.tanggal || '').substring(0, 10),
+          orderPriority: isSaldoAwalEntry ? 0 : 1,
+          no_request: (txIn.no_request && txIn.no_request !== '-') ? txIn.no_request : '',
+          no_gdn: '',
+          no_grn: grnIn,
+          kepada_dari: (txIn.sumber_donor && txIn.sumber_donor !== '-') ? txIn.sumber_donor : sumberDefault,
+          awal: 0,
+          masuk: Number(txIn.jumlah_masuk) || 0,
+          keluar: 0,
+          harga_unit: Number(txIn.harga_unit) || hargaDefault,
+          expired_date: txIn.expired_date || '',
+          catatan: catatanIn
+        });
+      }
+
+      for (var k = 0; k < txOutAll.length; k++) {
+        var txOut = txOutAll[k];
+        if (String(txOut.id_barang) !== idB) continue;
+        rawEvents.push({
+          tanggal: String(txOut.tanggal || '').substring(0, 10),
+          orderPriority: 2,
+          no_request: (txOut.no_request && txOut.no_request !== '-') ? txOut.no_request : '',
+          no_gdn: (txOut.no_gdn && txOut.no_gdn !== '-') ? txOut.no_gdn : '',
+          no_grn: '',
+          kepada_dari: txOut.tujuan_distribusi || txOut.nama_penerima || '',
+          awal: 0,
+          masuk: 0,
+          keluar: Number(txOut.jumlah_keluar) || 0,
+          harga_unit: Number(txOut.harga_unit) || hargaDefault,
+          expired_date: '',
+          catatan: txOut.catatan || ''
+        });
+      }
+
+      for (var o = 0; o < opAll.length; o++) {
+        var op = opAll[o];
+        if (String(op.id_barang) !== idB || String(op.status_persetujuan).toUpperCase() !== 'APPROVED') continue;
+        var diff = Number(op.selisih) || 0;
+        if (diff === 0) continue;
+        rawEvents.push({
+          tanggal: String(op.tanggal_periksa || op.tanggal_jadwal || '').substring(0, 10),
+          orderPriority: 3,
+          no_request: '',
+          no_gdn: '',
+          no_grn: op.no_opname || '',
+          kepada_dari: 'Penyesuaian Opname',
+          awal: 0,
+          masuk: diff > 0 ? diff : 0,
+          keluar: diff < 0 ? Math.abs(diff) : 0,
+          harga_unit: Number(op.harga_unit) || hargaDefault,
+          expired_date: '',
+          catatan: op.alasan_selisih || 'Stock Opname'
+        });
+      }
+
+      rawEvents.sort(function(a, b) {
+        if (a.tanggal !== b.tanggal) return a.tanggal.localeCompare(b.tanggal);
+        return a.orderPriority - b.orderPriority;
+      });
+
+      var runningBal = 0;
+      var openingBeforePeriod = 0;
+      var periodEvents = [];
+
+      for (var e = 0; e < rawEvents.length; e++) {
+        var ev = rawEvents[e];
+        if (startDate && ev.tanggal && ev.tanggal < startDate) {
+          runningBal += (ev.awal + ev.masuk - ev.keluar);
+          openingBeforePeriod = runningBal;
+          continue;
+        }
+        if (endDate && ev.tanggal && ev.tanggal > endDate) continue;
+        periodEvents.push(ev);
+      }
+
+      // Jika di mode preview / migrasi item belum punya rincian transaksi di array transaksiMasuk/Keluar, sintesiskan dari ringkasan master
+      if (rawEvents.length === 0) {
+        var mAwal = Number(it.stok_awal) || 0;
+        var mMasuk = Number(it.total_masuk) || 0;
+        var mKeluar = Number(it.total_keluar) || 0;
+        var mSaldo = Number(it.saldo_stok) || 0;
+        periodEvents.push({
+          tanggal: '',
+          no_request: '',
+          no_gdn: '',
+          no_grn: '',
+          kepada_dari: sumberDefault,
+          awal: mAwal,
+          masuk: mMasuk,
+          keluar: mKeluar,
+          harga_unit: hargaDefault,
+          expired_date: it.nearest_expired_date || '',
+          catatan: '',
+          _forcedBalance: mSaldo
+        });
+      } else if (periodEvents.length === 0 && startDate) {
+        periodEvents.push({
+          tanggal: startDate,
+          no_request: '',
+          no_gdn: '',
+          no_grn: '',
+          kepada_dari: 'Saldo Awal Periode',
+          awal: openingBeforePeriod,
+          masuk: 0,
+          keluar: 0,
+          harga_unit: hargaDefault,
+          expired_date: it.nearest_expired_date || '',
+          catatan: ''
+        });
+      }
+
+      var itemSumAwal = startDate ? openingBeforePeriod : 0;
+      var itemSumMasuk = 0;
+      var itemSumKeluar = 0;
+      var itemFinalBal = runningBal;
+
+      for (var pIdx = 0; pIdx < periodEvents.length; pIdx++) {
+        var pev = periodEvents[pIdx];
+        var rowAwal = (pIdx === 0 && startDate && pev.awal === 0) ? openingBeforePeriod : (Number(pev.awal) || 0);
+        if (!startDate && pIdx === 0 && pev.awal > 0) {
+          itemSumAwal += pev.awal;
+        }
+        var rowMasuk = Number(pev.masuk) || 0;
+        var rowKeluar = Number(pev.keluar) || 0;
+        itemSumMasuk += rowMasuk;
+        itemSumKeluar += rowKeluar;
+
+        if (typeof pev._forcedBalance === 'number') {
+          runningBal = pev._forcedBalance;
+        } else {
+          runningBal = runningBal + (startDate && pIdx === 0 ? 0 : rowAwal) + rowMasuk - rowKeluar;
+        }
+        itemFinalBal = runningBal;
+        var rowTotalNilai = runningBal * hargaDefault;
+        var isFirstRow = (pIdx === 0);
+
+        rows.push([
+          isFirstRow ? itemNo : '',
+          isFirstRow ? (it.nama_barang || '') : '',
+          isFirstRow ? (it.kode_barang || '') : '',
+          isFirstRow ? (it.satuan || '') : '',
+          isFirstRow ? hargaDefault : '',
+          isFirstRow ? sumberDefault : '',
+          pev.no_request || '',
+          pev.no_gdn || '',
+          pev.no_grn || '',
+          formatDateSlash(pev.tanggal),
+          pev.kepada_dari || '',
+          rowAwal,
+          rowMasuk,
+          rowKeluar,
+          runningBal,
+          rowTotalNilai,
+          formatDateSlash(pev.expired_date || (isFirstRow ? (it.nearest_expired_date || '') : '')),
+          pev.catatan || ''
+        ]);
+      }
+
+      // Baris Sub-Total per Barang ("Total :") persis seperti gambar referensi ISO
+      rows.push([
+        '', '', '', '', '', '', '', '', '', '',
+        'Total :',
+        itemSumAwal > 0 ? itemSumAwal : '',
+        itemSumMasuk,
+        itemSumKeluar,
+        itemFinalBal,
+        itemFinalBal * hargaDefault,
+        '', ''
+      ]);
+    }
+
+    return rows;
   }
 
   function computeReportLocally(payload) {
@@ -3036,7 +3281,9 @@
     var filterBarang = String(payload.namaBarang || '').toLowerCase();
     var allItems = APP_STATE.masterBarang || [];
 
-    var reportTitle = 'LAPORAN STOK KESELURUHAN GUDANG PMI KOTA SURAKARTA';
+    var reportTitle = 'Stok Report / Stok Opname';
+    var isoDocNo = 'PMISKA-KR-L4-002';
+    var isIsoStockWorksheet = false;
     var columns = [];
     var rows = [];
     var summary = {};
@@ -3050,25 +3297,29 @@
     }
 
     if (reportType === 'STOK_KESELURUHAN' || reportType === 'STOK_FOOD' || reportType === 'STOK_NON_FOOD' || reportType === 'STOK_OBAT') {
+      isIsoStockWorksheet = true;
       var forced = reportType === 'STOK_FOOD' ? 'FOOD ITEMS' : (reportType === 'STOK_NON_FOOD' ? 'NON FOOD' : (reportType === 'STOK_OBAT' ? 'OBAT' : null));
-      if (forced) reportTitle = 'LAPORAN PERSEDIAAN STOK KATEGORI ' + forced;
-      columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Harga Satuan (Rp)', 'Sumber', 'Total Masuk', 'Total Keluar', 'Penyesuaian', 'Saldo Stok', 'Total Nilai (Rp)', 'Expired Terdekat', 'Lokasi Rak', 'Status Stok'];
+      reportTitle = forced ? ('Stok Report / Stok Opname (' + forced + ')') : 'Stok Report / Stok Opname';
+      columns = ISO_STOCK_COLUMNS_18.slice();
+
+      var matchedItems = [];
       var totJenis = 0, totSaldo = 0, totNilai = 0;
       for (var i = 0; i < allItems.length; i++) {
         var it = allItems[i];
         if (!matchMaster(it, forced)) continue;
+        matchedItems.push(it);
         totJenis++;
         totSaldo += Number(it.saldo_stok) || 0;
         totNilai += Number(it.total_nilai) || 0;
-        rows.push([totJenis, it.kode_barang, it.nama_barang, it.kategori, it.satuan, Number(it.harga_unit)||0, it.sumber_donor, Number(it.total_masuk)||0, Number(it.total_keluar)||0, Number(it.penyesuaian_opname)||0, Number(it.saldo_stok)||0, Number(it.total_nilai)||0, it.nearest_expired_date || '-', it.lokasi_rak, it.status_stok]);
       }
+      rows = buildIsoStockWorksheetLedgerRows(matchedItems, startDate, endDate);
       summary = {
         'Total Jenis Barang': totJenis + ' Jenis',
         'Total Saldo Unit': formatNumber(totSaldo) + ' Unit',
         'Total Nilai Persediaan': formatRupiah(totNilai)
       };
     } else if (reportType === 'BARANG_MASUK') {
-      reportTitle = 'LAPORAN TRANSAKSI PENERIMAAN BARANG MASUK (GRN)';
+      reportTitle = 'Laporan Penerimaan Barang Masuk (GRN)';
       columns = ['No', 'No. Transaksi', 'Tanggal', 'No. Dokumen GRN', 'No. Request', 'Kode Barang', 'Nama Barang', 'Kategori', 'Jumlah Masuk', 'Satuan', 'Harga Unit (Rp)', 'Total Nilai (Rp)', 'Sumber', 'Expired Date', 'Catatan'];
       var cIn = 0, sQIn = 0, sVIn = 0;
       for (var m = 0; m < APP_STATE.transaksiMasuk.length; m++) {
@@ -3083,7 +3334,7 @@
       }
       summary = { 'Jumlah Transaksi Masuk': cIn + ' Transaksi', 'Total Unit Diterima': formatNumber(sQIn) + ' Unit', 'Total Nilai Penerimaan': formatRupiah(sVIn) };
     } else if (reportType === 'BARANG_KELUAR' || reportType === 'DISTRIBUSI_BANTUAN') {
-      reportTitle = reportType === 'BARANG_KELUAR' ? 'LAPORAN TRANSAKSI PENGELUARAN BARANG KELUAR (GDN)' : 'LAPORAN REALISASI DISTRIBUSI BANTUAN LOGISTIK KEMANUSIAAN';
+      reportTitle = reportType === 'BARANG_KELUAR' ? 'Laporan Pengeluaran Barang Keluar (GDN)' : 'Laporan Distribusi Bantuan Logistik';
       columns = ['No', 'No. Transaksi', 'Tanggal', 'No. Dokumen GDN', 'No. Request', 'Kode Barang', 'Nama Barang', 'Kategori', 'Jumlah Keluar', 'Satuan', 'Harga Unit (Rp)', 'Total Nilai (Rp)', 'Tujuan Distribusi', 'Nama Penerima', 'Penanggung Jawab'];
       var cOut = 0, sQOut = 0, sVOut = 0;
       for (var k = 0; k < APP_STATE.transaksiKeluar.length; k++) {
@@ -3097,7 +3348,7 @@
       }
       summary = { 'Total Transaksi Keluar': cOut + ' Transaksi', 'Total Unit Terdistribusi': formatNumber(sQOut) + ' Unit', 'Total Nilai Bantuan': formatRupiah(sVOut) };
     } else if (reportType === 'NILAI_PERSEDIAAN') {
-      reportTitle = 'LAPORAN VALUASI NILAI PERSEDIAAN ASET LOGISTIK GUDANG';
+      reportTitle = 'Laporan Valuasi Nilai Persediaan Gudang';
       columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Sumber', 'Satuan', 'Saldo Stok', 'Harga Per Unit (Rp)', 'Total Nilai Persediaan (Rp)'];
       var noV = 0, gVal = 0;
       for (var v = 0; v < allItems.length; v++) {
@@ -3108,7 +3359,7 @@
       }
       summary = { 'Jumlah Item Dihitung': noV + ' Jenis Barang', 'Total Nilai Persediaan Gudang': formatRupiah(gVal) };
     } else if (reportType === 'STOK_MINIMUM') {
-      reportTitle = 'LAPORAN DAFTAR BARANG STOK MINIMUM / KRITIS (REORDER ALERT)';
+      reportTitle = 'Laporan Daftar Barang Stok Minimum / Kritis';
       columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Saldo Stok Saat Ini', 'Batas Stok Minimum', 'Kekurangan Stok', 'Lokasi Rak', 'Sumber', 'Status Kritis'];
       var cMin = 0;
       for (var sm = 0; sm < allItems.length; sm++) {
@@ -3119,7 +3370,7 @@
       }
       summary = { 'Total Barang Stok Menipis/Kritis': cMin + ' Jenis' };
     } else if (reportType === 'BARANG_KEDALUWARSA') {
-      reportTitle = 'LAPORAN MONITORING TANGGAL KEDALUWARSA BARANG (EXPIRED DATE)';
+      reportTitle = 'Laporan Monitoring Tanggal Kedaluwarsa (Ex-date)';
       columns = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'No. Dokumen/GRN', 'Sumber', 'Saldo Stok', 'Satuan', 'Tanggal Kedaluwarsa', 'Sisa Hari', 'Status Kedaluwarsa', 'Lokasi Rak'];
       var expItems = APP_STATE.expiredMonitoringList || [];
       for (var ex = 0; ex < expItems.length; ex++) {
@@ -3130,7 +3381,7 @@
       }
       summary = { 'Total Batch Dipantau': rows.length + ' Batch' };
     } else if (reportType === 'STOCK_OPNAME') {
-      reportTitle = 'LAPORAN PEMERIKSAAN FISIK PERSEDIAAN (STOCK OPNAME)';
+      reportTitle = 'Stok Report / Stok Opname';
       columns = ['No', 'No. Opname', 'Tgl Periksa', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Stok Sistem', 'Stok Fisik', 'Selisih', 'Nilai Selisih (Rp)', 'Alasan Selisih', 'Petugas Pemeriksa', 'Status Persetujuan'];
       for (var so = 0; so < APP_STATE.stockOpnameList.length; so++) {
         var rSo = APP_STATE.stockOpnameList[so];
@@ -3139,7 +3390,7 @@
       }
       summary = { 'Total Pemeriksaan Opname': rows.length + ' Record' };
     } else {
-      reportTitle = 'LAPORAN REKAPITULASI PENERIMAAN & PERSEDIAAN BERDASARKAN SUMBER BARANG';
+      reportTitle = 'Laporan Rekapitulasi Berdasarkan Sumber Barang';
       columns = ['No', 'Sumber Barang', 'Jumlah Jenis Barang', 'Total Unit Masuk', 'Saldo Stok Tersisa', 'Total Nilai Kontribusi (Rp)'];
       var agg = {};
       for (var ai = 0; ai < allItems.length; ai++) {
@@ -3160,17 +3411,24 @@
       summary = { 'Total Mitra Sumber': sKeys.length + ' Sumber' };
     }
 
+    var periodeShort = formatPeriodeIsoLabel(startDate, endDate);
+
     return {
       reportType: reportType,
       reportTitle: reportTitle,
+      isoDocNo: isoDocNo,
+      isIsoStockWorksheet: isIsoStockWorksheet,
       metadata: {
-        instansi: APP_STATE.settings.NAMA_INSTANSI,
+        instansi: 'Palang Merah Indonesia',
+        namaGudang: 'PMI Kota Surakarta',
+        lokasiGudang: 'Kota Surakarta',
         alamat: APP_STATE.settings.ALAMAT_INSTANSI,
         telepon: APP_STATE.settings.TELEPON_INSTANSI,
-        periode: (startDate || endDate) ? ((startDate || 'Awal') + ' s/d ' + (endDate || 'Sekarang')) : 'Semua Periode',
+        periode: periodeShort,
+        periodeShort: periodeShort,
         tanggalCetak: new Date().toLocaleString('id-ID'),
-        koordinatorGudang: APP_STATE.settings.NAMA_KOORDINATOR_GUDANG,
-        kepalaMarkas: APP_STATE.settings.NAMA_KEPALA_MARKAS
+        koordinatorGudang: APP_STATE.settings.NAMA_KOORDINATOR_GUDANG || 'Indro Sri Widodo',
+        kepalaMarkas: APP_STATE.settings.NAMA_KEPALA_MARKAS || 'Wanto, S.KM.'
       },
       columns: columns,
       rows: rows,
@@ -3188,7 +3446,7 @@
       namaBarang: document.getElementById('reportBarangInput').value.trim()
     };
 
-    // 1. Hitung dan tampilkan instan (< 5ms) dari state lokal
+    // 1. Hitung dan tampilkan instan (< 5ms) dari state lokal dengan format Lembar Kerja ISO
     var localRep = computeReportLocally(payload);
     APP_STATE.activeReportData = localRep;
     renderReportPreview(localRep);
@@ -3196,6 +3454,14 @@
     // 2. Verifikasi silent di background
     callServerApi('GENERATE_REPORT', payload, { silent: true })
       .then(function(res) {
+        if (!res || !res.data) return;
+        // Jika laporan stok (1-4), pertahankan struktur 18 kolom 2-baris Lembar Kerja ISO + baris "Total :"
+        if (localRep.isIsoStockWorksheet && !res.data.isIsoStockWorksheet) {
+          var refreshedLocal = computeReportLocally(payload);
+          APP_STATE.activeReportData = refreshedLocal;
+          renderReportPreview(refreshedLocal);
+          return;
+        }
         APP_STATE.activeReportData = res.data;
         renderReportPreview(res.data);
       });
@@ -3203,15 +3469,30 @@
 
   function renderReportPreview(rep) {
     var meta = rep.metadata || {};
-    document.getElementById('repMetaInstansi').textContent = meta.instansi || APP_STATE.settings.NAMA_INSTANSI;
-    document.getElementById('repMetaAlamat').textContent = (meta.alamat || APP_STATE.settings.ALAMAT_INSTANSI) + ' | Telp: ' + (meta.telepon || APP_STATE.settings.TELEPON_INSTANSI);
-    document.getElementById('repMetaTitle').textContent = rep.reportTitle;
-    document.getElementById('repMetaPeriode').textContent = meta.periode || 'Semua Periode';
-    document.getElementById('repMetaTglCetak').textContent = meta.tanggalCetak || '-';
-    document.getElementById('repSignPetugas').textContent = meta.koordinatorGudang || 'Koordinator Gudang PB';
-    document.getElementById('repSignPimpinan').textContent = meta.kepalaMarkas || 'Kepala Markas PMI Kota Surakarta';
+    var isIso18 = Boolean(rep.isIsoStockWorksheet || (rep.columns && rep.columns.length === 18));
 
-    // Summary pills
+    var elInstansi = document.getElementById('repMetaInstansi');
+    if (elInstansi) elInstansi.textContent = 'Palang Merah Indonesia';
+    var elNamaGudang = document.getElementById('repMetaNamaGudang');
+    if (elNamaGudang) elNamaGudang.textContent = meta.namaGudang || 'PMI Kota Surakarta';
+    var elLokasiGudang = document.getElementById('repMetaLokasiGudang');
+    if (elLokasiGudang) elLokasiGudang.textContent = meta.lokasiGudang || 'Kota Surakarta';
+    var elAlamat = document.getElementById('repMetaAlamat');
+    if (elAlamat) elAlamat.textContent = (meta.alamat || APP_STATE.settings.ALAMAT_INSTANSI);
+    var elTitle = document.getElementById('repMetaTitle');
+    if (elTitle) elTitle.textContent = rep.reportTitle || 'Stok Report / Stok Opname';
+    var elPeriode = document.getElementById('repMetaPeriode');
+    if (elPeriode) elPeriode.textContent = meta.periodeShort || formatPeriodeIsoLabel(document.getElementById('reportStartDate').value, document.getElementById('reportEndDate').value);
+    var elTglCetak = document.getElementById('repMetaTglCetak');
+    if (elTglCetak) elTglCetak.textContent = meta.tanggalCetak || '-';
+    var elDocNo = document.getElementById('repMetaDocNo');
+    if (elDocNo) elDocNo.textContent = rep.isoDocNo || 'PMISKA-KR-L4-002';
+
+    // Blok Tanda Tangan: Kiri = Mengetahui KaBag PB & Relawan (Wanto, S.KM.), Kanan = Dibuat oleh KaSie Kesiapsiagaan dan respon (Indro Sri Widodo)
+    document.getElementById('repSignPimpinan').textContent = meta.kepalaMarkas || APP_STATE.settings.NAMA_KEPALA_MARKAS || 'Wanto, S.KM.';
+    document.getElementById('repSignPetugas').textContent = meta.koordinatorGudang || APP_STATE.settings.NAMA_KOORDINATOR_GUDANG || 'Indro Sri Widodo';
+
+    // Summary pills (Hanya di layar)
     var sumKeys = Object.keys(rep.summary || {});
     var sumHtml = '';
     for (var s = 0; s < sumKeys.length; s++) {
@@ -3224,32 +3505,89 @@
     }
     document.getElementById('reportSummaryPills').innerHTML = sumHtml;
 
-    // Header Tabel
+    // Header Tabel (2 Baris Merged untuk Lembar Kerja Stok Report / Stok Opname ISO)
     var cols = rep.columns || [];
-    var thHtml = '<tr>';
-    for (var c = 0; c < cols.length; c++) {
-      thHtml += '<th>' + escapeHtml(cols[c]) + '</th>';
+    var thHtml = '';
+    if (isIso18) {
+      thHtml =
+        '<tr>' +
+          '<th rowspan="2" style="width:36px;">No</th>' +
+          '<th rowspan="2" style="min-width:165px;">Nama Barang</th>' +
+          '<th colspan="4">Informasi Barang</th>' +
+          '<th colspan="4">NOMOR DOCUMEN</th>' +
+          '<th>Kepada</th>' +
+          '<th colspan="5">STOCK BALANCE &amp;Nilai</th>' +
+          '<th rowspan="2" style="min-width:80px;">Ex-date</th>' +
+          '<th rowspan="2" style="min-width:110px;">Catatan</th>' +
+        '</tr>' +
+        '<tr>' +
+          '<th>Code</th>' +
+          '<th>Unit</th>' +
+          '<th>Harga/Unit</th>' +
+          '<th>Sumber</th>' +
+          '<th>Request</th>' +
+          '<th>GDN</th>' +
+          '<th>GRN</th>' +
+          '<th>Tanggal</th>' +
+          '<th>Dari</th>' +
+          '<th>Awal</th>' +
+          '<th>Masuk</th>' +
+          '<th>Keluar</th>' +
+          '<th>Balance</th>' +
+          '<th style="min-width:105px;">Total Nilai</th>' +
+        '</tr>';
+    } else {
+      thHtml = '<tr>';
+      for (var c = 0; c < cols.length; c++) {
+        thHtml += '<th>' + escapeHtml(cols[c]) + '</th>';
+      }
+      thHtml += '</tr>';
     }
-    thHtml += '</tr>';
     document.getElementById('reportTableHead').innerHTML = thHtml;
 
     // Body Tabel
     var rows = rep.rows || [];
     var tbHtml = '';
+    var colCount = isIso18 ? 18 : cols.length;
     if (rows.length === 0) {
-      tbHtml = '<tr><td colspan="' + cols.length + '" class="text-center text-muted py-4">Tidak ada data pada kriteria laporan ini.</td></tr>';
-    } else {
+      tbHtml = '<tr><td colspan="' + colCount + '" class="text-center text-muted py-4">Tidak ada data pada kriteria laporan ini.</td></tr>';
+    } else if (isIso18) {
       for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var isSubtotal = String(row[10] || '').trim() === 'Total :';
+        tbHtml += '<tr' + (isSubtotal ? ' class="iso-subtotal-row"' : '') + '>';
+        for (var idx = 0; idx < 18; idx++) {
+          var v = row[idx];
+          if (idx === 0 || idx === 2 || idx === 3 || idx === 9 || idx === 16) {
+            tbHtml += '<td class="text-center">' + escapeHtml(v) + '</td>';
+          } else if (idx === 4) {
+            tbHtml += '<td>' + (v !== '' && v !== null && v !== undefined && Number(v) > 0 ? renderAccountingRupiahCell(v) : '') + '</td>';
+          } else if (idx === 10) {
+            tbHtml += '<td class="' + (isSubtotal ? 'text-end fw-bolder' : '') + '">' + escapeHtml(v) + '</td>';
+          } else if (idx === 11 || idx === 12 || idx === 13) {
+            tbHtml += '<td class="text-center">' + (v !== '' && v !== null && v !== undefined ? formatNumber(v) : '') + '</td>';
+          } else if (idx === 14) {
+            tbHtml += '<td class="text-center fw-bolder">' + (v !== '' && v !== null && v !== undefined ? formatNumber(v) : '') + '</td>';
+          } else if (idx === 15) {
+            tbHtml += '<td class="fw-bolder">' + (v !== '' && v !== null && v !== undefined ? renderAccountingRupiahCell(v) : '') + '</td>';
+          } else {
+            tbHtml += '<td>' + escapeHtml(v) + '</td>';
+          }
+        }
+        tbHtml += '</tr>';
+      }
+    } else {
+      for (var r2 = 0; r2 < rows.length; r2++) {
         tbHtml += '<tr>';
-        for (var cellIdx = 0; cellIdx < rows[r].length; cellIdx++) {
-          var val = rows[r][cellIdx];
+        for (var cellIdx = 0; cellIdx < rows[r2].length; cellIdx++) {
+          var val = rows[r2][cellIdx];
           var colName = String(cols[cellIdx] || '');
           if (typeof val === 'number' && colName.indexOf('(Rp)') !== -1) {
-            tbHtml += '<td class="text-end fw-bold">' + formatRupiah(val) + '</td>';
+            tbHtml += '<td class="fw-bold">' + renderAccountingRupiahCell(val) + '</td>';
           } else if (typeof val === 'number' && cellIdx > 0) {
-            tbHtml += '<td class="text-end">' + formatNumber(val) + '</td>';
+            tbHtml += '<td class="text-center">' + formatNumber(val) + '</td>';
           } else {
-            tbHtml += '<td>' + escapeHtml(val) + '</td>';
+            tbHtml += '<td' + (cellIdx === 0 ? ' class="text-center"' : '') + '>' + escapeHtml(val) + '</td>';
           }
         }
         tbHtml += '</tr>';
@@ -3410,6 +3748,8 @@
         if (
           col0Str.toUpperCase().indexOf('TOTAL') === 0 ||
           col1Str.toUpperCase().indexOf('TOTAL') === 0 ||
+          fullRowUpper.indexOf('TOTAL :') !== -1 ||
+          fullRowUpper.indexOf('TOTAL:') !== -1 ||
           fullRowUpper.indexOf('LEMBAR KERJA') !== -1 ||
           fullRowUpper.indexOf('TANGGAL BERLAKU') !== -1 ||
           fullRowUpper.indexOf('KESIAPSIAGAAN DAN RESPON') !== -1 ||
@@ -3688,6 +4028,7 @@
   /**
    * Membuat dan mengunduh file template/contoh Stock Report Gudang PB.xlsx
    * yang memiliki 3 sheet: "Food Items", "Non Food", dan "Obat"
+   * lengkap dengan Kop Dokumen Standar ISO PMI Kota Surakarta.
    */
   function downloadSampleExcelTemplate() {
     if (typeof XLSX === 'undefined') {
@@ -3696,36 +4037,39 @@
     }
 
     var wb = XLSX.utils.book_new();
+    var allItems = APP_STATE.masterBarang || [];
+    var foodItems = allItems.filter(function(it) { return it.kategori === 'FOOD ITEMS'; });
+    var nonFoodItems = allItems.filter(function(it) { return it.kategori === 'NON FOOD'; });
+    var obatItems = allItems.filter(function(it) { return it.kategori === 'OBAT'; });
 
-    var foodData = [
-      ['Kode Barang', 'Nama Barang', 'Satuan', 'Harga Satuan', 'Sumber', 'No Dokumen GRN', 'Stok Awal', 'Barang Masuk', 'Barang Keluar', 'Saldo Stok', 'Total Nilai', 'Expired Date', 'Keterangan'],
-      ['FD-0001', 'Beras Premium Kemasan 5 Kg', 'Sak', 72500, 'CSR-DONATUR', 'GRN/PMI-SKA/01', 100, 20, 15, 105, 7612500, '2027-06-15', 'Logistik Sembako Bencana'],
-      ['FD-0002', 'Mie Instan Kuah (Karton 40 Bks)', 'DUS', 112000, 'PMI-JTG', 'GRN/PMI-SKA/02', 40, 15, 10, 45, 5040000, '2027-02-10', 'Kebutuhan Dapur Umum'],
-      ['FD-0003', 'Minyak Goreng Kemasan 1 Liter', 'Pouch', 17500, 'PMI-SKA', 'GRN/PMI-SKA/03', 80, 20, 10, 90, 1575000, '2027-08-20', 'Paket Sembako Keluarga'],
-      ['FD-0004', 'Sarden Kaleng 425gr', 'Kaleng', 24000, 'PMI-PST', 'GRN/PMI-SKA/04', 50, 0, 22, 28, 672000, '2026-12-15', 'Lauk Siap Saji']
-    ];
+    var wsFood = createIsoWorksheetExcelSheet({
+      isIso18: true,
+      subtitle: 'Stok Report / Stok Opname',
+      docNo: 'PMISKA-KR-L4-002',
+      periode: formatPeriodeIsoLabel('', ''),
+      rows: buildIsoStockWorksheetLedgerRows(foodItems, '', '')
+    });
+    var wsNonFood = createIsoWorksheetExcelSheet({
+      isIso18: true,
+      subtitle: 'Stok Report / Stok Opname',
+      docNo: 'PMISKA-KR-L4-002',
+      periode: formatPeriodeIsoLabel('', ''),
+      rows: buildIsoStockWorksheetLedgerRows(nonFoodItems, '', '')
+    });
+    var wsObat = createIsoWorksheetExcelSheet({
+      isIso18: true,
+      subtitle: 'Stok Report / Stok Opname',
+      docNo: 'PMISKA-KR-L4-002',
+      periode: formatPeriodeIsoLabel('', ''),
+      rows: buildIsoStockWorksheetLedgerRows(obatItems, '', '')
+    });
 
-    var nonFoodData = [
-      ['Kode Barang', 'Nama Barang', 'Satuan', 'Harga Satuan', 'Sumber', 'No Dokumen', 'Stok Awal', 'Barang Masuk', 'Barang Keluar', 'Saldo Stok', 'Total Nilai', 'Keterangan'],
-      ['NF-0001', 'Family Kit PMI Standar Nasional', 'Box', 385000, 'PMI-PST', 'GRN/PMI-SKA/05', 60, 20, 15, 65, 25025000, 'Bantuan Keluarga Terdampak'],
-      ['NF-0002', 'Hygiene Kit (Paket Kebersihan)', 'Box', 210000, 'IFRC', 'GRN/PMI-SKA/06', 80, 0, 0, 80, 16800000, 'Paket Sanitasi Darurat'],
-      ['NF-0003', 'Terpal Plastik / Tarpaulin 4x6m PMI', 'Lembar', 245000, 'IFRC', 'GRN/PMI-SKA/07', 100, 10, 0, 110, 26950000, 'Shelter Darurat'],
-      ['NF-0004', 'Selimut Wol / Blanket PMI', 'Pcs', 85000, 'PMI-JTG', 'GRN/PMI-SKA/08', 50, 0, 15, 35, 2975000, 'Perlengkapan Pengungsian']
-    ];
-
-    var obatData = [
-      ['Kode Barang', 'Nama Barang', 'Satuan', 'Harga Satuan', 'Sumber', 'No Dokumen', 'Stok Awal', 'Barang Masuk', 'Barang Keluar', 'Saldo Stok', 'Total Nilai', 'Expired Date', 'Keterangan'],
-      ['OB-0001', 'Paracetamol 500mg (Box 100 Kaplet)', 'Box', 38000, 'PMI-SKA', 'GRN/PMI-SKA/09', 50, 10, 10, 50, 1900000, '2027-09-30', 'Obat Pelayanan Kesehatan'],
-      ['OB-0002', 'Povidone Iodine 10% 300ml (Betadine)', 'Botol', 62000, 'PMI-SKA', 'GRN/PMI-SKA/10', 30, 5, 3, 32, 1984000, '2027-01-25', 'Antiseptik Luka PP'],
-      ['OB-0003', 'Kasa Steril Hidrofil 16x16cm', 'Box', 14500, 'PMI-JTG', 'GRN/PMI-SKA/11', 100, 20, 0, 120, 1740000, '2028-03-01', 'Alat Kesehatan P3K']
-    ];
-
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(foodData), 'Food Items');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(nonFoodData), 'Non Food');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(obatData), 'Obat');
+    XLSX.utils.book_append_sheet(wb, wsFood, 'Food Items');
+    XLSX.utils.book_append_sheet(wb, wsNonFood, 'Non Food');
+    XLSX.utils.book_append_sheet(wb, wsObat, 'Obat');
 
     XLSX.writeFile(wb, 'Stock Report Gudang PB.xlsx');
-    showToast('File referensi Stock Report Gudang PB.xlsx berhasil diunduh.', 'success');
+    showToast('File referensi Stock Report Gudang PB.xlsx (Format Kop ISO PMI) berhasil diunduh.', 'success');
   }
 
   /* ==========================================================================
@@ -3883,34 +4227,397 @@
   }
 
   /* ==========================================================================
-   * 15. MESIN EXPORT EXCEL (.XLSX) & CETAK DOKUMEN RESMI (PDF / PRINT)
+   * 15. MESIN EXPORT EXCEL (.XLSX) BERFORMAT KOP ISO & CETAK DOKUMEN RESMI
    * ========================================================================== */
+  function padRowToCols(arr, totalCols) {
+    var out = (arr || []).slice();
+    while (out.length < totalCols) out.push('');
+    return out;
+  }
+
+  /**
+   * Membangun Worksheet SheetJS (.xlsx) dengan Kop Dokumen Standar ISO PMI Kota Surakarta
+   * (3 Kotak Kop Berbingkai, Identitas Gudang, Header Tabel 2 Baris Merged, Border Sel,
+   * Format Akuntansi Rupiah "Rp -", Baris Sub-Total "Total :", dan Blok Tanda Tangan Bawah).
+   */
+  function createIsoWorksheetExcelSheet(options) {
+    var opts = options || {};
+    var isIso18 = Boolean(opts.isIso18);
+    var customCols = opts.columns || [];
+    var totalCols = isIso18 ? 18 : Math.max(18, customCols.length);
+    var subtitle = opts.subtitle || 'Stok Report / Stok Opname';
+    var docNo = opts.docNo || 'PMISKA-KR-L4-002';
+    var periode = opts.periode || formatPeriodeIsoLabel('', '');
+    var kepalaMarkas = opts.kepalaMarkas || APP_STATE.settings.NAMA_KEPALA_MARKAS || 'Wanto, S.KM.';
+    var koordinatorGudang = opts.koordinatorGudang || APP_STATE.settings.NAMA_KOORDINATOR_GUDANG || 'Indro Sri Widodo';
+    var dataRows = opts.rows || [];
+
+    var aoa = [];
+
+    // Baris 0-4 (Excel Baris 1-5): Kop Dokumen Standar ISO PMI Kota Surakarta
+    var r0 = padRowToCols([], totalCols);
+    r0[0] = 'Palang Merah\nIndonesia';
+    r0[2] = 'LEMBAR KERJA\n' + subtitle;
+    r0[13] = 'Halaman 1 dari 001';
+    aoa.push(r0);
+
+    var r1 = padRowToCols([], totalCols);
+    r1[13] = 'No. : ' + docNo;
+    aoa.push(r1);
+
+    var r2 = padRowToCols([], totalCols);
+    r2[13] = 'Versi: 001';
+    aoa.push(r2);
+
+    var r3 = padRowToCols([], totalCols);
+    r3[2] = 'Bagian\nPB dan Relawan';
+    r3[8] = 'Seksi\nKesiapsiagaan dan Respon';
+    r3[13] = 'Tanggal berlaku: 21-01-2022';
+    aoa.push(r3);
+
+    var r4 = padRowToCols([], totalCols);
+    r4[0] = 'Kota Surakarta';
+    r4[13] = 'Tanggal kaji ulang: 21-01-2025';
+    aoa.push(r4);
+
+    // Baris 5 (Excel Baris 6): Spasi kosong
+    aoa.push(padRowToCols([], totalCols));
+
+    // Baris 6-9 (Excel Baris 7-10): Identitas Gudang
+    var r6 = padRowToCols([], totalCols);
+    r6[0] = 'Palang Merah Indonesia';
+    aoa.push(r6);
+
+    var r7 = padRowToCols([], totalCols);
+    r7[0] = 'Nama Gudang';
+    r7[1] = 'PMI Kota Surakarta';
+    aoa.push(r7);
+
+    var r8 = padRowToCols([], totalCols);
+    r8[0] = 'Lokasi Gudang';
+    r8[1] = 'Kota Surakarta';
+    aoa.push(r8);
+
+    var r9 = padRowToCols([], totalCols);
+    r9[0] = 'Periode';
+    r9[1] = periode;
+    aoa.push(r9);
+
+    // Baris 10 (Excel Baris 11): Spasi kosong
+    aoa.push(padRowToCols([], totalCols));
+
+    // Baris 11-12 (Excel Baris 12-13): Header Tabel
+    var tableHeaderStartRow = 11;
+    var dataStartRow = 13;
+
+    if (isIso18) {
+      aoa.push(padRowToCols([
+        'No', 'Nama Barang',
+        'Informasi Barang', '', '', '',
+        'NOMOR DOCUMEN', '', '', '',
+        'Kepada',
+        'STOCK BALANCE &Nilai', '', '', '', '',
+        'Ex-date', 'Catatan'
+      ], totalCols));
+      aoa.push(padRowToCols([
+        '', '',
+        'Code', 'Unit', 'Harga/Unit', 'Sumber',
+        'Request', 'GDN', 'GRN', 'Tanggal',
+        'Dari',
+        'Awal', 'Masuk', 'Keluar', 'Balance', 'Total Nilai',
+        '', ''
+      ], totalCols));
+      dataStartRow = 13;
+    } else {
+      aoa.push(padRowToCols(customCols, totalCols));
+      dataStartRow = 12;
+    }
+
+    // Baris Data
+    for (var i = 0; i < dataRows.length; i++) {
+      aoa.push(padRowToCols(dataRows[i], totalCols));
+    }
+
+    var lastTableRow = aoa.length - 1;
+
+    // 2 Baris Spasi sebelum Blok Tanda Tangan
+    aoa.push(padRowToCols([], totalCols));
+    aoa.push(padRowToCols([], totalCols));
+
+    var sigRow1Idx = aoa.length;
+    var sig1 = padRowToCols([], totalCols);
+    sig1[1] = 'Mengetahui,';
+    sig1[11] = 'Dibuat oleh :';
+    aoa.push(sig1);
+
+    var sigRow2Idx = aoa.length;
+    var sig2 = padRowToCols([], totalCols);
+    sig2[1] = 'KaBag PB & Relawan';
+    sig2[11] = 'KaSie Kesiapsiagaan dan respon';
+    aoa.push(sig2);
+
+    // 3 Baris Spasi Tanda Tangan Basah
+    aoa.push(padRowToCols([], totalCols));
+    aoa.push(padRowToCols([], totalCols));
+    aoa.push(padRowToCols([], totalCols));
+
+    var sigNameRowIdx = aoa.length;
+    var sigName = padRowToCols([], totalCols);
+    sigName[1] = kepalaMarkas;
+    sigName[11] = koordinatorGudang;
+    aoa.push(sigName);
+
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Definisi Merge Cells (!merges)
+    var merges = [
+      // Kop Kiri
+      { s: { r: 0, c: 0 }, e: { r: 3, c: 1 } },
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } },
+      // Kop Tengah Atas & Bawah
+      { s: { r: 0, c: 2 }, e: { r: 2, c: 12 } },
+      { s: { r: 3, c: 2 }, e: { r: 4, c: 7 } },
+      { s: { r: 3, c: 8 }, e: { r: 4, c: 12 } },
+      // Kop Kanan
+      { s: { r: 0, c: 13 }, e: { r: 0, c: 17 } },
+      { s: { r: 1, c: 13 }, e: { r: 1, c: 17 } },
+      { s: { r: 2, c: 13 }, e: { r: 2, c: 17 } },
+      { s: { r: 3, c: 13 }, e: { r: 3, c: 17 } },
+      { s: { r: 4, c: 13 }, e: { r: 4, c: 17 } },
+      // Tanda Tangan Bawah
+      { s: { r: sigRow1Idx, c: 1 }, e: { r: sigRow1Idx, c: 4 } },
+      { s: { r: sigRow1Idx, c: 11 }, e: { r: sigRow1Idx, c: 15 } },
+      { s: { r: sigRow2Idx, c: 1 }, e: { r: sigRow2Idx, c: 4 } },
+      { s: { r: sigRow2Idx, c: 11 }, e: { r: sigRow2Idx, c: 15 } },
+      { s: { r: sigNameRowIdx, c: 1 }, e: { r: sigNameRowIdx, c: 4 } },
+      { s: { r: sigNameRowIdx, c: 11 }, e: { r: sigNameRowIdx, c: 15 } }
+    ];
+
+    if (isIso18) {
+      merges.push(
+        { s: { r: 11, c: 0 }, e: { r: 12, c: 0 } },   // No
+        { s: { r: 11, c: 1 }, e: { r: 12, c: 1 } },   // Nama Barang
+        { s: { r: 11, c: 2 }, e: { r: 11, c: 5 } },   // Informasi Barang
+        { s: { r: 11, c: 6 }, e: { r: 11, c: 9 } },   // NOMOR DOCUMEN
+        { s: { r: 11, c: 11 }, e: { r: 11, c: 15 } }, // STOCK BALANCE &Nilai
+        { s: { r: 11, c: 16 }, e: { r: 12, c: 16 } }, // Ex-date
+        { s: { r: 11, c: 17 }, e: { r: 12, c: 17 } }  // Catatan
+      );
+    }
+
+    ws['!merges'] = merges;
+
+    // Lebar Kolom (!cols)
+    ws['!cols'] = [
+      { wch: 6 },  // A: No
+      { wch: 27 }, // B: Nama Barang
+      { wch: 11 }, // C: Code
+      { wch: 8 },  // D: Unit
+      { wch: 14 }, // E: Harga/Unit
+      { wch: 13 }, // F: Sumber
+      { wch: 10 }, // G: Request
+      { wch: 11 }, // H: GDN
+      { wch: 13 }, // I: GRN
+      { wch: 12 }, // J: Tanggal
+      { wch: 18 }, // K: Kepada / Dari
+      { wch: 8 },  // L: Awal
+      { wch: 8 },  // M: Masuk
+      { wch: 8 },  // N: Keluar
+      { wch: 9 },  // O: Balance
+      { wch: 16 }, // P: Total Nilai
+      { wch: 12 }, // Q: Ex-date
+      { wch: 20 }  // R: Catatan
+    ];
+
+    // Tinggi Baris (!rows)
+    ws['!rows'] = [
+      { hpt: 19 }, { hpt: 19 }, { hpt: 19 }, { hpt: 19 }, { hpt: 19 },
+      { hpt: 12 },
+      { hpt: 18 }, { hpt: 17 }, { hpt: 17 }, { hpt: 17 },
+      { hpt: 12 },
+      { hpt: 20 }, { hpt: 20 }
+    ];
+
+    // Helper Styling Sel (xlsx-js-style)
+    var borderThin = { style: 'thin', color: { rgb: '000000' } };
+    var borderMed = { style: 'medium', color: { rgb: '000000' } };
+
+    function ensureCell(r, c) {
+      var addr = XLSX.utils.encode_cell({ r: r, c: c });
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      if (!ws[addr].s) ws[addr].s = {};
+      return ws[addr];
+    }
+
+    function applyBoxOuterBorder(rStart, rEnd, cStart, cEnd, bStyle) {
+      for (var r = rStart; r <= rEnd; r++) {
+        for (var c = cStart; c <= cEnd; c++) {
+          var cell = ensureCell(r, c);
+          var b = cell.s.border || {};
+          if (r === rStart) b.top = bStyle;
+          if (r === rEnd) b.bottom = bStyle;
+          if (c === cStart) b.left = bStyle;
+          if (c === cEnd) b.right = bStyle;
+          cell.s.border = b;
+        }
+      }
+    }
+
+    // 1. Bingkai Kop ISO (3 Kotak Utama)
+    applyBoxOuterBorder(0, 4, 0, 1, borderMed);   // Kotak Kiri (Logo & Palang Merah Indonesia Kota Surakarta)
+    applyBoxOuterBorder(0, 2, 2, 12, borderMed);  // Kotak Tengah Atas (LEMBAR KERJA)
+    applyBoxOuterBorder(3, 4, 2, 7, borderMed);   // Kotak Tengah Bawah Kiri (Bagian)
+    applyBoxOuterBorder(3, 4, 8, 12, borderMed);  // Kotak Tengah Bawah Kanan (Seksi)
+    applyBoxOuterBorder(0, 4, 13, 17, borderMed); // Kotak Kanan (Halaman, No, Versi, Tgl Berlaku)
+
+    // Font & Alignment Kop ISO
+    var cA1 = ensureCell(0, 0);
+    cA1.s.font = { name: 'Calibri', sz: 12, bold: true };
+    cA1.s.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+
+    var cA5 = ensureCell(4, 0);
+    cA5.s.font = { name: 'Calibri', sz: 10, bold: false };
+    cA5.s.alignment = { horizontal: 'center', vertical: 'center' };
+
+    var cC1 = ensureCell(0, 2);
+    cC1.s.font = { name: 'Calibri', sz: 11, bold: true };
+    cC1.s.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+
+    var cC4 = ensureCell(3, 2);
+    cC4.s.font = { name: 'Calibri', sz: 10, bold: true };
+    cC4.s.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+
+    var cI4 = ensureCell(3, 8);
+    cI4.s.font = { name: 'Calibri', sz: 10, bold: true };
+    cI4.s.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+
+    for (var kr = 0; kr <= 4; kr++) {
+      var cN = ensureCell(kr, 13);
+      cN.s.font = { name: 'Calibri', sz: 10, bold: false };
+      cN.s.alignment = { horizontal: 'left', vertical: 'center' };
+    }
+
+    // 2. Font Identitas Gudang (Baris 6-9)
+    for (var wr = 6; wr <= 9; wr++) {
+      var cLbl = ensureCell(wr, 0);
+      cLbl.s.font = { name: 'Calibri', sz: wr === 6 ? 12 : 11, bold: true };
+      var cVal = ensureCell(wr, 1);
+      cVal.s.font = { name: 'Calibri', sz: 10, bold: false };
+    }
+
+    // 3. Header Tabel
+    var activeColCount = isIso18 ? 18 : customCols.length;
+    var headerEndRow = isIso18 ? 12 : 11;
+    for (var hr = tableHeaderStartRow; hr <= headerEndRow; hr++) {
+      for (var hc = 0; hc < activeColCount; hc++) {
+        var hCell = ensureCell(hr, hc);
+        hCell.s.font = { name: 'Calibri', sz: 10, bold: true };
+        hCell.s.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+        hCell.s.border = {
+          top: hr === tableHeaderStartRow ? borderMed : borderThin,
+          bottom: hr === headerEndRow ? borderMed : borderThin,
+          left: hc === 0 ? borderMed : borderThin,
+          right: hc === activeColCount - 1 ? borderMed : borderThin
+        };
+      }
+    }
+
+    // 4. Baris Data & Baris "Total :"
+    var acctFmt = '_("Rp"* #,##0_);_("Rp"* (#,##0);_("Rp"* "-"_);_(@_)';
+    for (var dr = dataStartRow; dr <= lastTableRow; dr++) {
+      var isSubtotalRow = isIso18 && String(ensureCell(dr, 10).v || '').trim() === 'Total :';
+      for (var dc = 0; dc < activeColCount; dc++) {
+        var dCell = ensureCell(dr, dc);
+        var isBoldCol = isSubtotalRow || (isIso18 && (dc === 14 || dc === 15));
+        dCell.s.font = { name: 'Calibri', sz: 10, bold: isBoldCol };
+
+        var hAlign = 'left';
+        if (isIso18) {
+          if (dc === 0 || dc === 2 || dc === 3 || dc === 9 || dc === 11 || dc === 12 || dc === 13 || dc === 14 || dc === 16) {
+            hAlign = 'center';
+          } else if (dc === 10 && isSubtotalRow) {
+            hAlign = 'right';
+          } else if (dc === 4 || dc === 15) {
+            hAlign = 'right';
+          }
+        } else if (dc === 0) {
+          hAlign = 'center';
+        }
+
+        dCell.s.alignment = { horizontal: hAlign, vertical: 'center' };
+        dCell.s.border = {
+          top: isSubtotalRow ? borderMed : borderThin,
+          bottom: (isSubtotalRow || dr === lastTableRow) ? borderMed : borderThin,
+          left: dc === 0 ? borderMed : borderThin,
+          right: dc === activeColCount - 1 ? borderMed : borderThin
+        };
+
+        if (isIso18 && (dc === 4 || dc === 15) && typeof dCell.v === 'number') {
+          dCell.t = 'n';
+          dCell.z = acctFmt;
+          dCell.s.numFmt = acctFmt;
+        }
+      }
+    }
+
+    // 5. Blok Tanda Tangan
+    var sigRows = [sigRow1Idx, sigRow2Idx, sigNameRowIdx];
+    for (var sr = 0; sr < sigRows.length; sr++) {
+      var rIdx = sigRows[sr];
+      var isName = rIdx === sigNameRowIdx;
+      var cLeft = ensureCell(rIdx, 1);
+      cLeft.s.font = { name: 'Calibri', sz: 10, bold: isName };
+      cLeft.s.alignment = { horizontal: 'center', vertical: 'center' };
+      var cRight = ensureCell(rIdx, 11);
+      cRight.s.font = { name: 'Calibri', sz: 10, bold: isName };
+      cRight.s.alignment = { horizontal: 'center', vertical: 'center' };
+    }
+
+    return ws;
+  }
+
   function exportMasterBarangExcel() {
     var items = getFilteredMasterBarang();
-    var aoa = [
-      ['DAFTAR MASTER BARANG & SALDO STOK - ' + APP_STATE.settings.NAMA_INSTANSI],
-      ['Tanggal Export: ' + new Date().toLocaleString('id-ID')],
-      [],
-      ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Subkategori', 'Satuan', 'Harga Unit (Rp)', 'Sumber', 'Stok Minimum', 'Masuk', 'Keluar', 'Saldo Stok', 'Total Nilai (Rp)', 'Expired Terdekat', 'Lokasi Rak', 'Status Stok']
-    ];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      aoa.push([
-        i + 1, it.kode_barang, it.nama_barang, it.kategori, it.subkategori, it.satuan,
-        it.harga_unit, it.sumber_donor, it.stok_minimum, it.total_masuk, it.total_keluar,
-        it.saldo_stok, it.total_nilai, it.nearest_expired_date || '-', it.lokasi_rak, it.status_stok
-      ]);
-    }
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Master_Barang');
-    XLSX.writeFile(wb, 'Master_Barang_PMI_Surakarta.xlsx');
+    var periode = formatPeriodeIsoLabel('', '');
+
+    var wsAll = createIsoWorksheetExcelSheet({
+      isIso18: true,
+      subtitle: 'Stok Report / Stok Opname',
+      docNo: 'PMISKA-KR-L4-002',
+      periode: periode,
+      rows: buildIsoStockWorksheetLedgerRows(items, '', '')
+    });
+    XLSX.utils.book_append_sheet(wb, wsAll, 'Stok Report');
+
+    var cats = [
+      { key: 'FOOD ITEMS', sheet: 'Food Items' },
+      { key: 'NON FOOD', sheet: 'Non Food' },
+      { key: 'OBAT', sheet: 'Obat' }
+    ];
+    for (var c = 0; c < cats.length; c++) {
+      var catItems = (APP_STATE.masterBarang || []).filter(function(it) { return it.kategori === cats[c].key; });
+      if (catItems.length > 0) {
+        var wsCat = createIsoWorksheetExcelSheet({
+          isIso18: true,
+          subtitle: 'Stok Report / Stok Opname',
+          docNo: 'PMISKA-KR-L4-002',
+          periode: periode,
+          rows: buildIsoStockWorksheetLedgerRows(catItems, '', '')
+        });
+        XLSX.utils.book_append_sheet(wb, wsCat, cats[c].sheet);
+      }
+    }
+
+    XLSX.writeFile(wb, 'Stock_Report_Gudang_PMI_Surakarta.xlsx');
+    showToast('Laporan Stok Gudang berhasil diekspor ke Excel (Format Kop ISO PMI).', 'success');
   }
 
   function printMasterBarangPDF() {
     openQuickReport('STOK_KESELURUHAN');
     setTimeout(function() {
       printActiveReportDocument();
-    }, 600);
+    }, 350);
   }
 
   function exportKartuStokExcel() {
@@ -3919,61 +4626,91 @@
       showToast('Silakan tampilkan Kartu Stok barang terlebih dahulu.', 'warning');
       return;
     }
-    var aoa = [
-      ['KARTU STOK BARANG (STOCK CARD) - ' + APP_STATE.settings.NAMA_INSTANSI],
-      ['Kode Barang', ks.item.kode_barang, 'Kategori', ks.item.kategori],
-      ['Nama Barang', ks.item.nama_barang, 'Satuan', ks.item.satuan],
-      ['Harga Satuan', ks.item.harga_unit, 'Saldo Akhir', ks.summary.saldoAkhirPeriode],
-      [],
-      ['No', 'Tanggal Transaksi', 'Nomor Dokumen', 'Keterangan Transaksi', 'Barang Masuk', 'Barang Keluar', 'Saldo Stok', 'Harga Satuan', 'Nilai Persediaan', 'Sumber Barang', 'Tujuan Distribusi']
-    ];
-    for (var i = 0; i < ks.ledger.length; i++) {
-      var r = ks.ledger[i];
-      aoa.push([
-        i + 1, r.tanggal, r.no_dokumen, r.keterangan, r.barang_masuk, r.barang_keluar,
-        r.saldo_stok, r.harga_satuan, r.nilai_persediaan, r.sumber_barang, r.tujuan_distribusi
-      ]);
-    }
+    var sDate = document.getElementById('stockCardStartDate').value;
+    var eDate = document.getElementById('stockCardEndDate').value;
+    var ws = createIsoWorksheetExcelSheet({
+      isIso18: true,
+      subtitle: 'Stok Report / Kartu Stok (' + ks.item.nama_barang + ')',
+      docNo: 'PMISKA-KR-L4-002',
+      periode: formatPeriodeIsoLabel(sDate, eDate),
+      rows: buildIsoStockWorksheetLedgerRows([ks.item], sDate, eDate)
+    });
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Kartu_Stok');
+    XLSX.utils.book_append_sheet(wb, ws, 'Kartu_Stok');
     XLSX.writeFile(wb, 'Kartu_Stok_' + ks.item.kode_barang + '.xlsx');
   }
 
   function exportExpiredReportExcel() {
     var list = APP_STATE.expiredMonitoringList || [];
-    var aoa = [
-      ['LAPORAN MONITORING KEDALUWARSA BARANG - ' + APP_STATE.settings.NAMA_INSTANSI],
-      ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'No. Dokumen/GRN', 'Sumber', 'Saldo Stok', 'Satuan', 'Lokasi Rak', 'Tanggal Kedaluwarsa', 'Sisa Hari', 'Status']
-    ];
+    var cols = ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'No. Dokumen/GRN', 'Sumber', 'Saldo Stok', 'Satuan', 'Lokasi Rak', 'Ex-date', 'Sisa Hari', 'Status'];
+    var rows = [];
     for (var i = 0; i < list.length; i++) {
       var it = list[i];
-      aoa.push([
+      rows.push([
         i + 1, it.kode_barang, it.nama_barang, it.kategori, it.no_batch_dokumen,
         it.sumber_donor, it.saldo_stok_saat_ini, it.satuan, it.lokasi_rak,
-        it.expired_date, it.days_remaining, it.status_expired
+        it.expired_date, it.days_remaining + ' Hari', it.status_expired
       ]);
     }
+    var ws = createIsoWorksheetExcelSheet({
+      isIso18: false,
+      subtitle: 'Monitoring Expired Date Barang',
+      docNo: 'PMISKA-KR-L4-002',
+      periode: formatPeriodeIsoLabel('', ''),
+      columns: cols,
+      rows: rows
+    });
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Monitoring_Expired');
+    XLSX.utils.book_append_sheet(wb, ws, 'Monitoring_Expired');
     XLSX.writeFile(wb, 'Monitoring_Expired_PMI_Surakarta.xlsx');
   }
 
   function exportActiveReportToExcel() {
     var rep = APP_STATE.activeReportData;
     if (!rep) return;
-    var aoa = [
-      [rep.metadata.instansi],
-      [rep.reportTitle],
-      ['Periode: ' + rep.metadata.periode + ' | Tanggal Cetak: ' + rep.metadata.tanggalCetak],
-      [],
-      rep.columns
-    ];
-    for (var i = 0; i < rep.rows.length; i++) {
-      aoa.push(rep.rows[i]);
-    }
+
+    var isIso18 = Boolean(rep.isIsoStockWorksheet || (rep.columns && rep.columns.length === 18));
+    var sDate = document.getElementById('reportStartDate') ? document.getElementById('reportStartDate').value : '';
+    var eDate = document.getElementById('reportEndDate') ? document.getElementById('reportEndDate').value : '';
+    var periode = (rep.metadata && rep.metadata.periodeShort) ? rep.metadata.periodeShort : formatPeriodeIsoLabel(sDate, eDate);
+
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Laporan_PMI');
+    var wsMain = createIsoWorksheetExcelSheet({
+      isIso18: isIso18,
+      subtitle: rep.reportTitle || 'Stok Report / Stok Opname',
+      docNo: rep.isoDocNo || 'PMISKA-KR-L4-002',
+      periode: periode,
+      kepalaMarkas: rep.metadata ? rep.metadata.kepalaMarkas : undefined,
+      koordinatorGudang: rep.metadata ? rep.metadata.koordinatorGudang : undefined,
+      columns: rep.columns,
+      rows: rep.rows
+    });
+    XLSX.utils.book_append_sheet(wb, wsMain, 'Stok Report');
+
+    // Jika mengekspor STOK_KESELURUHAN tanpa filter kategori tunggal, sertakan juga sheet Food Items, Non Food, dan Obat berformat Kop ISO
+    if (rep.reportType === 'STOK_KESELURUHAN') {
+      var cats = [
+        { key: 'FOOD ITEMS', sheet: 'Food Items' },
+        { key: 'NON FOOD', sheet: 'Non Food' },
+        { key: 'OBAT', sheet: 'Obat' }
+      ];
+      for (var c = 0; c < cats.length; c++) {
+        var catItems = (APP_STATE.masterBarang || []).filter(function(it) { return it.kategori === cats[c].key; });
+        if (catItems.length > 0) {
+          var wsCat = createIsoWorksheetExcelSheet({
+            isIso18: true,
+            subtitle: 'Stok Report / Stok Opname',
+            docNo: rep.isoDocNo || 'PMISKA-KR-L4-002',
+            periode: periode,
+            rows: buildIsoStockWorksheetLedgerRows(catItems, sDate, eDate)
+          });
+          XLSX.utils.book_append_sheet(wb, wsCat, cats[c].sheet);
+        }
+      }
+    }
+
     XLSX.writeFile(wb, rep.reportType + '_PMI_Surakarta.xlsx');
+    showToast('Laporan berhasil diekspor ke Excel lengkap dengan Kop Standar ISO PMI Kota Surakarta.', 'success');
   }
 
   /**
@@ -4110,36 +4847,71 @@
   }
 
   function buildOfficialLetterheadHtml(docTitle, subMeta) {
+    var periodeText = subMeta || formatPeriodeIsoLabel('', '');
     return (
-      '<div style="border-bottom: 3px solid #D71920; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">' +
-        '<div style="display: flex; align-items: center; gap: 12px;">' +
-          '<img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer" style="width: 52px; height: 52px; object-fit: contain;">' +
-          '<div>' +
-            '<div style="font-size: 18px; font-weight: 800; color: #D71920;">' + escapeHtml(APP_STATE.settings.NAMA_INSTANSI) + '</div>' +
-            '<div style="font-size: 13px; font-weight: 700;">GUDANG LOGISTIK &amp; PENANGGULANGAN BENCANA (PB)</div>' +
-            '<div style="font-size: 11px; color: #555;">' + escapeHtml(APP_STATE.settings.ALAMAT_INSTANSI) + ' | ' + escapeHtml(APP_STATE.settings.TELEPON_INSTANSI) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div style="text-align: right;">' +
-          '<div style="font-size: 14px; font-weight: 800;">' + escapeHtml(docTitle) + '</div>' +
-          '<div style="font-size: 11px; color: #444;">' + escapeHtml(subMeta) + '</div>' +
-        '</div>' +
+      '<table class="iso-kop-table">' +
+        '<tbody>' +
+          '<tr>' +
+            '<td class="iso-kop-left" rowspan="2">' +
+              '<div class="iso-kop-brand-row">' +
+                '<img src="https://drive.google.com/thumbnail?id=1-x1tYT6JA2KVEE89l-nAtdlZIRUWf_eU" alt="Logo PMI Kota Surakarta" referrerpolicy="no-referrer" class="iso-kop-logo">' +
+                '<div class="iso-kop-brand-text">' +
+                  '<div>Palang</div>' +
+                  '<div>Merah</div>' +
+                  '<div>Indonesia</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="iso-kop-city">Kota Surakarta</div>' +
+            '</td>' +
+            '<td class="iso-kop-center-top" colspan="2">' +
+              '<div class="iso-kop-lembar">LEMBAR KERJA</div>' +
+              '<div class="iso-kop-subtitle">' + escapeHtml(docTitle || 'Stok Report / Stok Opname') + '</div>' +
+            '</td>' +
+            '<td class="iso-kop-right" rowspan="2">' +
+              '<div>Halaman 1 dari 001</div>' +
+              '<div>No. : PMISKA-KR-L4-002</div>' +
+              '<div>Versi: 001</div>' +
+              '<div>Tanggal berlaku: 21-01-2022</div>' +
+              '<div>Tanggal kaji ulang: 21-01-2025</div>' +
+            '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="iso-kop-center-sub">' +
+              '<div>Bagian</div>' +
+              '<div>PB dan Relawan</div>' +
+            '</td>' +
+            '<td class="iso-kop-center-sub">' +
+              '<div>Seksi</div>' +
+              '<div>Kesiapsiagaan dan Respon</div>' +
+            '</td>' +
+          '</tr>' +
+        '</tbody>' +
+      '</table>' +
+      '<div class="iso-warehouse-meta">' +
+        '<div class="iso-wh-org">Palang Merah Indonesia</div>' +
+        '<table class="iso-wh-table">' +
+          '<tbody>' +
+            '<tr><td class="iso-wh-label">Nama Gudang</td><td class="iso-wh-val">PMI Kota Surakarta</td></tr>' +
+            '<tr><td class="iso-wh-label">Lokasi Gudang</td><td class="iso-wh-val">Kota Surakarta</td></tr>' +
+            '<tr><td class="iso-wh-label">Periode</td><td class="iso-wh-val">' + escapeHtml(periodeText) + '</td></tr>' +
+          '</tbody>' +
+        '</table>' +
       '</div>'
     );
   }
 
   function buildOfficialSignatureBlockHtml() {
     return (
-      '<div class="row text-center mt-5 pt-3" style="font-size: 12px;">' +
+      '<div class="row iso-signature-block text-center mt-4 pt-2">' +
         '<div class="col-6">' +
-          '<div>Disiapkan Oleh,</div>' +
-          '<div class="fw-bold mb-5">Petugas Operasional Gudang</div>' +
-          '<div class="fw-bold text-decoration-underline">' + escapeHtml(APP_STATE.settings.NAMA_KOORDINATOR_GUDANG) + '</div>' +
+          '<div>Mengetahui,</div>' +
+          '<div class="mb-5">KaBag PB &amp; Relawan</div>' +
+          '<div class="fw-bold">' + escapeHtml(APP_STATE.settings.NAMA_KEPALA_MARKAS || 'Wanto, S.KM.') + '</div>' +
         '</div>' +
         '<div class="col-6">' +
-          '<div>Mengetahui &amp; Menyetujui,</div>' +
-          '<div class="fw-bold mb-5">Penanggung Jawab / Kepala Markas</div>' +
-          '<div class="fw-bold text-decoration-underline">' + escapeHtml(APP_STATE.settings.NAMA_KEPALA_MARKAS) + '</div>' +
+          '<div>Dibuat oleh :</div>' +
+          '<div class="mb-5">KaSie Kesiapsiagaan dan respon</div>' +
+          '<div class="fw-bold">' + escapeHtml(APP_STATE.settings.NAMA_KOORDINATOR_GUDANG || 'Indro Sri Widodo') + '</div>' +
         '</div>' +
       '</div>'
     );
@@ -4414,19 +5186,9 @@
       };
     }
     if (act === 'GENERATE_REPORT') {
-      var rows = db.items.map(function(it, idx) {
-        return [idx + 1, it.kode_barang, it.nama_barang, it.kategori, it.satuan, it.harga_unit, it.sumber_donor, it.total_masuk, it.total_keluar, 0, it.saldo_stok, it.total_nilai, it.nearest_expired_date || '-', it.status_stok];
-      });
       return {
         success: true,
-        data: {
-          reportType: p.reportType,
-          reportTitle: 'LAPORAN RESMI GUDANG PMI KOTA SURAKARTA (' + p.reportType + ')',
-          metadata: { instansi: APP_STATE.settings.NAMA_INSTANSI, alamat: APP_STATE.settings.ALAMAT_INSTANSI, telepon: APP_STATE.settings.TELEPON_INSTANSI, periode: 'Semua Periode', tanggalCetak: new Date().toLocaleString('id-ID'), koordinatorGudang: APP_STATE.settings.NAMA_KOORDINATOR_GUDANG, kepalaMarkas: APP_STATE.settings.NAMA_KEPALA_MARKAS },
-          columns: ['No', 'Kode Barang', 'Nama Barang', 'Kategori', 'Satuan', 'Harga Satuan (Rp)', 'Sumber', 'Masuk', 'Keluar', 'Penyesuaian', 'Saldo Stok', 'Total Nilai (Rp)', 'Expired Date', 'Status Stok'],
-          rows: rows,
-          summary: { 'Total Jenis Barang': rows.length + ' Jenis', 'Status Database': 'Mode Preview Lokal' }
-        }
+        data: computeReportLocally(p)
       };
     }
     if (act === 'GET_USERS') return { success: true, data: db.users };
