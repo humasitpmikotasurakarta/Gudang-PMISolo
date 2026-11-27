@@ -1402,6 +1402,262 @@
   }
 
   /* ==========================================================================
+   * AUTOCOMPLETE SEARCH COMBOBOX (PILIH NAMA / KODE BARANG DI MODAL GRN & GDN)
+   * ========================================================================== */
+  .pmi-autocomplete-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  .pmi-ac-input-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .pmi-ac-search-icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--pmi-gray-text);
+    font-size: 0.92rem;
+    pointer-events: none;
+    z-index: 2;
+    transition: color 0.18s ease;
+  }
+
+  .pmi-ac-input {
+    padding-left: 36px !important;
+    padding-right: 64px !important;
+    font-weight: 600;
+    cursor: text;
+    background-color: var(--pmi-white);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .pmi-ac-input:focus {
+    border-color: var(--pmi-red);
+    box-shadow: 0 0 0 3px rgba(215, 25, 32, 0.12);
+  }
+
+  .pmi-ac-input.has-selected-item {
+    background-color: #F8FAFC;
+    border-color: #CBD5E1;
+    color: var(--pmi-black);
+  }
+
+  #modalTransaksiMasuk .pmi-ac-input:focus {
+    border-color: #198754;
+    box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.14);
+  }
+
+  #modalTransaksiMasuk .pmi-ac-input.has-selected-item {
+    background-color: #F0FDF4;
+    border-color: #86EFAC;
+  }
+
+  #modalTransaksiKeluar .pmi-ac-input.has-selected-item {
+    background-color: #FFF1F2;
+    border-color: #FECDD3;
+  }
+
+  .pmi-ac-actions {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    z-index: 2;
+  }
+
+  .pmi-ac-clear-btn,
+  .pmi-ac-chevron-btn {
+    border: none;
+    background: transparent;
+    color: var(--pmi-gray-text);
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    padding: 0;
+    transition: all 0.15s ease;
+  }
+
+  .pmi-ac-clear-btn:hover {
+    color: var(--pmi-red);
+    background: rgba(215, 25, 32, 0.08);
+  }
+
+  .pmi-ac-chevron-btn:hover {
+    color: var(--pmi-black);
+    background: rgba(15, 23, 42, 0.06);
+  }
+
+  .pmi-ac-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--pmi-white);
+    border: 1px solid var(--pmi-gray-border);
+    border-radius: 14px;
+    box-shadow: 0 18px 40px -10px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(15, 23, 42, 0.04);
+    z-index: 1080;
+    overflow: hidden;
+    display: none;
+    animation: acFadeIn 0.15s ease-out;
+  }
+
+  .pmi-ac-dropdown.show {
+    display: block;
+  }
+
+  @keyframes acFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .pmi-ac-header {
+    padding: 7px 13px;
+    background: var(--pmi-gray-card);
+    border-bottom: 1px solid var(--pmi-gray-border);
+    font-size: 0.71rem;
+    font-weight: 700;
+    color: var(--pmi-gray-text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .pmi-ac-list {
+    max-height: 265px;
+    overflow-y: auto;
+    padding: 5px;
+  }
+
+  .pmi-ac-item {
+    padding: 9px 11px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    transition: background-color 0.12s ease;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.45);
+  }
+
+  .pmi-ac-item:last-child {
+    border-bottom: none;
+  }
+
+  .pmi-ac-item:hover,
+  .pmi-ac-item.ac-active {
+    background-color: #FFF1F2;
+  }
+
+  #modalTransaksiMasuk .pmi-ac-item:hover,
+  #modalTransaksiMasuk .pmi-ac-item.ac-active {
+    background-color: #ECFDF5;
+  }
+
+  .pmi-ac-item.ac-selected {
+    background-color: #F1F5F9;
+  }
+
+  .pmi-ac-item-main {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .pmi-ac-item-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+    flex-wrap: wrap;
+  }
+
+  .pmi-ac-code-badge {
+    font-size: 0.71rem;
+    font-weight: 800;
+    padding: 1px 7px;
+    border-radius: 6px;
+    background: #FEE2E2;
+    color: #B91C1C;
+    letter-spacing: 0.3px;
+  }
+
+  #modalTransaksiMasuk .pmi-ac-code-badge {
+    background: #D1FAE5;
+    color: #047857;
+  }
+
+  .pmi-ac-cat-tag {
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: #F1F5F9;
+    color: #475569;
+  }
+
+  .pmi-ac-item-name {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--pmi-black);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pmi-ac-item-right {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .pmi-ac-stock-pill {
+    font-size: 0.74rem;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 50px;
+    display: inline-block;
+    background: #DCFCE7;
+    color: #15803D;
+  }
+
+  .pmi-ac-stock-pill.stock-low {
+    background: #FEF3C7;
+    color: #B45309;
+  }
+
+  .pmi-ac-stock-pill.stock-zero {
+    background: #FEE2E2;
+    color: #B91C1C;
+  }
+
+  .pmi-ac-highlight {
+    background-color: #FEF08A;
+    color: #000000;
+    padding: 0 2px;
+    border-radius: 3px;
+    font-weight: 800;
+  }
+
+  .pmi-ac-empty {
+    padding: 20px 14px;
+    text-align: center;
+    color: var(--pmi-gray-text);
+    font-size: 0.82rem;
+  }
+
+  /* ==========================================================================
    * FORMAT LEMBAR KERJA STANDAR ISO PMI KOTA SURAKARTA (KOP, TABEL & TTD)
    * ========================================================================== */
   .iso-kop-table {
