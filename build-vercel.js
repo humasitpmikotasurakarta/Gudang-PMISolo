@@ -33,9 +33,9 @@ if (process.env.GAS_WEB_APP_URL && process.env.GAS_WEB_APP_URL.trim() !== '') {
 }
 
 const bundledHtml = indexHtml
-  .replace(/<\?!=\s*include\(['"]CSS['"]\);\s*\?>/g, cssHtml)
-  .replace(/<\?!=\s*include\(['"]Components['"]\);\s*\?>/g, componentsHtml)
-  .replace(/<\?!=\s*include\(['"]JavaScript['"]\);\s*\?>/g, jsHtml);
+  .replace(/<\?!=\s*include\(['"]CSS['"]\);\s*\?>/g, function() { return cssHtml; })
+  .replace(/<\?!=\s*include\(['"]Components['"]\);\s*\?>/g, function() { return componentsHtml; })
+  .replace(/<\?!=\s*include\(['"]JavaScript['"]\);\s*\?>/g, function() { return jsHtml; });
 
 fs.writeFileSync(path.join(distDir, 'index.html'), bundledHtml, 'utf8');
 fs.writeFileSync(path.join(rootDir, 'Preview_Lokal_PMI_Surakarta.html'), bundledHtml, 'utf8');
